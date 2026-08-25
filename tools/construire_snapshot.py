@@ -155,6 +155,7 @@ def fusionner_doublons(stations):
         jumelle["pmax"] = max(jumelle["pmax"], st["pmax"])
         jumelle["prises"] |= st["prises"]
         jumelle["pdc"] = jumelle["pdc"] if len(jumelle["pdc"]) >= len(st["pdc"]) else st["pdc"]
+        jumelle["itinerance"] |= st["itinerance"]
         jumelle["nbre_pdc"] = max(jumelle["nbre_pdc"], st["nbre_pdc"])
         for drapeau in ("gratuit", "cb", "acte", "pmr", "resa", "2roues", "libre"):
             jumelle[drapeau] |= st[drapeau]
@@ -183,6 +184,23 @@ def distance_m(lat1, lon1, lat2, lon2):
     return math.hypot(dlat, dlon)
 
 
+def ecrire_index_itinerance(stations_ordonnees, dest):
+    """Ecrit la table identifiant de point de charge -> indice de station."""
+    ids, indices = [], []
+    for rang, st in enumerate(stations_ordonnees):
+        for ident in sorted(st["itinerance"]):
+            ids.append(ident)
+            indices.append(rang)
+    paquet = {"ids": ids, "stations": indices}
+    with open(dest, "w", encoding="utf-8") as f:
+        f.write("/* Table identifiant d'itinerance -> station, generee par "
+                "tools/construire_snapshot.py. */\n")
+        f.write("window.INDEX_ITINERANCE=")
+        json.dump(paquet, f, ensure_ascii=False, separators=(",", ":"))
+        f.write(";\n")
+    print("index d'itinerance : %d identifiants" % len(ids))
+
+
 def main(src, dest):
     stations = {}
     lus = 0
@@ -209,7 +227,8 @@ def main(src, dest):
                               row.get("nom_amenageur")),
                 "ope": nettoie(row.get("nom_operateur"), 40),
                 "pmax": 0.0, "prises": 0, "impl": norm_implantation(row.get("implantation_station")),
-                "pdc": set(), "nbre_pdc": 0, "maj": (row.get("date_maj") or "")[:10],
+                "pdc": set(), "itinerance": set(), "nbre_pdc": 0,
+                "maj": (row.get("date_maj") or "")[:10],
                 "h": nettoie(row.get("horaires"), 120), "tarif": nettoie(row.get("tarification"), 90),
                 "tel": nettoie(row.get("telephone_operateur"), 24),
                 "gratuit": False, "cb": False, "acte": False, "pmr": False,
@@ -229,6 +248,9 @@ def main(src, dest):
         ident_pdc = (row.get("id_pdc_itinerance") or row.get("id_pdc_local") or "").strip()
         if ident_pdc:
             st["pdc"].add(ident_pdc)
+        itinerance = (row.get("id_pdc_itinerance") or "").strip().upper()
+        if itinerance and itinerance not in ("NULL", "NON CONCERNE", "NON CONCERNÉ"):
+            st["itinerance"].add(itinerance)
         try:
             st["nbre_pdc"] = max(st["nbre_pdc"], int(float(row.get("nbre_pdc") or 0)))
         except ValueError:
@@ -260,7 +282,8 @@ def main(src, dest):
         return cache[val]
 
     cols = defaultdict(list)
-    for st in stations.values():
+    ordonnees = list(stations.values())
+    for st in ordonnees:
         # Le champ nbre_pdc est declaratif et parfois faux (une station Bump du
         # 4e arrondissement annonce 229 points pour 21 reellement identifies).
         # On compte donc les identifiants de points de charge distincts, et on
@@ -307,6 +330,7 @@ def main(src, dest):
     }
     with open(dest, "w", encoding="utf-8") as f:
         json.dump(paquet, f, ensure_ascii=False, separators=(",", ":"))
+    ecrire_index_itinerance(ordonnees, dest.replace("stations.json", "index-itinerance.js").replace("stations.js", "index-itinerance.js"))
     print("lignes lues %d -> %d stations, %d points de charge"
           % (lus, len(stations), sum(cols["n"])))
     print("reseaux distincts :", len(reseaux))

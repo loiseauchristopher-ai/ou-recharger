@@ -28,26 +28,31 @@ Tri par distance, puissance, nombre de points de charge ou nom.
 
 ## Les deux sens de « disponibilité »
 
-La distinction est faite explicitement dans l'interface, parce que les deux
-niveaux n'ont pas la même valeur :
+L'application distingue trois niveaux, et ne fait jamais passer l'un pour l'autre.
 
-1. **Ouvertes maintenant** — déduit du champ `horaires` du jeu IRVE (syntaxe
-   *opening_hours* d'OpenStreetMap, analysée par `js/horaires.js`). Couvre toute
-   la France, mais ne dit rien de l'occupation réelle des bornes.
-2. **Libres maintenant** — statut temps réel des points de charge. Un seul
-   opérateur publie aujourd'hui un flux ouvert exploitable sans clé :
-   **Belib' (Ville de Paris)**, soit environ 1 950 points suivis sur 380
-   stations. Ailleurs, les statuts circulent en OCPI privé — la recherche sur
-   data.gouv.fr et sur la fédération Opendatasoft n'a rien trouvé d'autre.
-   `js/dispo.js` tient un registre de fournisseurs pour en brancher d'autres : il
-   suffit d'ajouter une entrée `{ id, nom, zone, url, lire }`. Les points sont
-   rattachés aux stations par proximité (150 m), les flux n'exposant pas
-   d'identifiant de station fiable. Chaque point rejoint la station **la plus
-   proche** dans un rayon de 80 m : plus large, l'appariement accrochait en
-   centre-ville les bornes du trottoir d'en face.
+1. **Ouvertes maintenant** — déduit du champ `horaires` du jeu IRVE. Couvre
+   toutes les stations, mais ne dit rien de l'occupation réelle des bornes.
 
-Hors zone couverte, le filtre « libres maintenant » est désactivé et l'interface
-le dit, plutôt que de laisser croire à une couverture nationale.
+2. **Libres maintenant** — état et occupation réellement remontés par les
+   opérateurs, via la **base nationale consolidée dynamique** publiée par le
+   Point d'Accès National (`transport.data.gouv.fr`). Le règlement européen
+   AFIR impose désormais cette publication : ~115 000 points de charge y
+   figurent, Belib' compris. Après appariement, **24 044 stations sur 38 980
+   (62 %)** ont un état connu.
+
+   Le rattachement se fait par **identifiant d'itinérance**, pas par proximité
+   géographique : 97 % des points du flux trouvent leur station, et une borne
+   n'est jamais attribuée au trottoir d'en face. La table
+   `donnees/index-itinerance.js` (173 641 identifiants, ~580 Ko compressés)
+   n'est chargée que si l'utilisateur demande cet état — inutile de la faire
+   peser sur le premier affichage.
+
+3. **Relevé ancien** — la fraîcheur varie fortement d'un opérateur à l'autre :
+   la moitié des points datent de moins de six heures, un quart de moins d'une
+   heure, mais un tiers de plus de vingt-quatre heures. Au-delà de **deux
+   heures**, l'état est affiché avec son âge (« 4 libres sur 4 — il y a 25 h »),
+   sans la pastille ni le code couleur du direct, et le filtre « Libres
+   maintenant » l'exclut.
 
 ## Données
 

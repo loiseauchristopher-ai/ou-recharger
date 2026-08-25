@@ -58,7 +58,7 @@
   var jeu = null;
   var carte = null;
   var resultats = [];
-  var tempsReel = { parStation: new Map(), fournisseurs: [], etat: 'inactif', erreur: null };
+  var tempsReel = { parStation: new Map(), resume: null, etat: 'inactif', erreur: null };
 
   /* --------------------------------------------------------------- Filtrage */
 
@@ -100,7 +100,7 @@
         }
       } else if (etat.dispo === 'libres') {
         var e = tempsReel.parStation.get(i);
-        if (!e || !e.libre) continue;
+        if (!e || !e.libre || !B.dispo.estFrais(e)) continue;
       }
 
       var d = -1;
@@ -125,9 +125,9 @@
   /* ----------------------------------------------------------------- Rendu */
 
   function couleurStation(i) {
-    if (etat.dispo === 'libres' || tempsReel.parStation.size) {
+    if (tempsReel.parStation.size) {
       var e = tempsReel.parStation.get(i);
-      if (e) {
+      if (B.dispo.estFrais(e)) {
         if (e.libre) return getComputedStyle(document.body).getPropertyValue('--ok').trim() || '#1a8f6a';
         if (e.occupe) return getComputedStyle(document.body).getPropertyValue('--occupe').trim() || '#d98324';
         if (e.hs) return getComputedStyle(document.body).getPropertyValue('--hs').trim() || '#c2413a';
@@ -163,15 +163,25 @@
   function disponibilite(i) {
     var e = tempsReel.parStation.get(i);
     if (e && e.total) {
+      var frais = B.dispo.estFrais(e);
+      var age = B.dispo.anciennete(e.maj);
+      /* Un relevé ancien reste une information, mais ce n'est plus un état
+       * courant : on l'annonce avec son âge et sans le code couleur du direct. */
+      var genre = frais ? 'temps-reel' : 'releve-ancien';
+      var teinte = function (classe) { return frais ? classe : ''; };
       if (e.libre) {
-        return { genre: 'temps-reel', classe: 'ok',
-          texte: e.libre + ' libre' + (e.libre > 1 ? 's' : '') + ' sur ' + e.total };
+        return { genre: genre, classe: teinte('ok'), age: age,
+          texte: e.libre + ' libre' + (e.libre > 1 ? 's' : '') + ' sur ' + e.total +
+            (frais ? '' : ' — ' + age) };
       }
       if (e.occupe) {
-        return { genre: 'temps-reel', classe: 'occupe',
-          texte: e.occupe > 1 ? 'toutes en charge' : 'en charge' };
+        return { genre: genre, classe: teinte('occupe'), age: age,
+          texte: (e.occupe > 1 ? 'toutes en charge' : 'en charge') + (frais ? '' : ' — ' + age) };
       }
-      return { genre: 'temps-reel', classe: 'hs', texte: 'hors service' };
+      if (e.hs) {
+        return { genre: genre, classe: teinte('hs'), age: age,
+          texte: 'hors service' + (frais ? '' : ' — ' + age) };
+      }
     }
     var h = B.horaires.etat(jeu.horaire(i), new Date());
     if (h === 'ouvert') {
@@ -251,7 +261,7 @@
       ? [{ c: 'var(--ok)', t: 'Au moins un point libre' },
          { c: 'var(--occupe)', t: 'Tous en charge' },
          { c: 'var(--hs)', t: 'Hors service' }]
-        .concat(B.PALIERS.map(function (p) { return { c: p.couleur, t: p.libelle + ' (sans temps réel)' }; }))
+        .concat(B.PALIERS.map(function (p) { return { c: p.couleur, t: p.libelle + ' — état non publié' }; }))
       : B.PALIERS.map(function (p) { return { c: p.couleur, t: p.libelle + ' — ' + p.detail }; });
 
     var el = $('#legende');
@@ -469,8 +479,12 @@
       '<button type="button" class="bouton" id="btn-copier-coords">Copier</button>' +
       '</div>' +
       '<p class="fiche-note">Données déclaratives des opérateurs, consolidées par data.gouv.fr. ' +
-      (e ? 'Le statut temps réel provient de ' + echapper(tempsReel.fournisseurs.map(function (f) { return f.nom; }).join(', ')) + '.'
-         : 'Aucun flux temps réel ne couvre cette station : la disponibilité affichée est celle des horaires déclarés.') +
+      (e && e.total
+        ? 'L’état des bornes vient de ' + echapper(B.dispo.source.nom) + ', relevé ' +
+          echapper(B.dispo.anciennete(e.maj)) + '.'
+        : tempsReel.etat === 'ok'
+          ? 'Cet opérateur ne publie pas l’état de ses bornes : la disponibilité affichée est celle des horaires déclarés.'
+          : 'Chargez l’état des bornes pour connaître leur occupation réelle.') +
       '</p>';
     $('#btn-copier-coords').addEventListener('click', function () {
       copier(lat + ', ' + lon, this);
@@ -658,49 +672,63 @@
 
   /* -------------------------------------------------------------- Temps reel */
 
-  function majTempsReel() {
-    var bbox = carte.emprise();
-    var couvert = B.dispo.fournisseurs.filter(function (f) { return B.dispo.chevauche(f.zone, bbox); });
-    var aide = $('#aide-dispo');
-
-    if (!couvert.length) {
-      tempsReel = { parStation: new Map(), fournisseurs: [], etat: 'hors-zone', erreur: null };
-      aide.textContent = '« Ouvertes maintenant » s’appuie sur les horaires déclarés. ' +
-        'Aucun flux temps réel ne couvre la zone affichée — seul Belib’ (Paris) en publie un ouvert à ce jour.';
-      bandeau(null);
-      if (etat.dispo === 'libres') { etat.dispo = 'ouvertes'; rendreChipsDispo(); }
-      rafraichir();
-      return;
-    }
-
-    aide.textContent = 'Statut temps réel publié sur une partie de la zone affichée par ' +
-      couvert.map(function (f) { return f.nom; }).join(', ') +
-      '. Ailleurs, seuls les horaires déclarés sont connus.';
+  /* Le flux national pèse environ 2 Mo : on ne le charge jamais d'office, mais
+   * sur demande — clic sur « Libres maintenant » ou sur le bouton dédié. */
+  function majTempsReel(silencieux) {
+    if (tempsReel.etat === 'chargement') return;
     tempsReel.etat = 'chargement';
-    bandeau('Récupération des statuts temps réel…');
+    majBoutonTempsReel();
+    if (!silencieux) bandeau('Récupération de l’état des bornes…');
 
-    B.dispo.rafraichir(bbox).then(function (res) {
-      if (res.erreurs.length || !res.points.length) {
-        tempsReel = { parStation: new Map(), fournisseurs: [], etat: 'erreur', erreur: res.erreurs[0] };
-        bandeau('Statut temps réel indisponible (flux injoignable depuis ce contexte). ' +
-          'Les filtres et la recherche restent complets.');
-        if (etat.dispo === 'libres') { etat.dispo = 'ouvertes'; rendreChipsDispo(); }
-        rafraichir();
-        return;
-      }
+    B.dispo.rafraichir().then(function (res) {
       tempsReel = {
-        parStation: B.dispo.apparier(jeu, res.points),
-        fournisseurs: res.fournisseurs,
-        etat: 'ok',
-        erreur: null
+        parStation: res.parStation, resume: res.resume, etat: 'ok', erreur: null
       };
-      var suivies = tempsReel.parStation.size;
-      bandeau('Temps réel : ' + res.points.length + ' points suivis sur ' + suivies +
-        ' stations — ' + res.fournisseurs.map(function (f) { return f.nom; }).join(', ') + '.');
+      var r = res.resume;
+      var frais = 0;
+      res.parStation.forEach(function (e) { if (B.dispo.estFrais(e)) frais++; });
+      bandeau('État des bornes : ' + r.stations.toLocaleString('fr-FR') +
+        ' stations suivies, dont ' + frais.toLocaleString('fr-FR') +
+        ' relevées il y a moins de deux heures. Source : ' + r.source + '.');
+      majBoutonTempsReel();
+      rafraichir();
+    }, function (e) {
+      tempsReel = { parStation: new Map(), resume: null, etat: 'erreur', erreur: e };
+      bandeau('État des bornes indisponible (' + e.message + '). ' +
+        'La recherche et les filtres restent complets.');
+      if (etat.dispo === 'libres') { etat.dispo = 'ouvertes'; rendreChipsDispo(); }
+      majBoutonTempsReel();
       rafraichir();
     });
   }
 
+  function majBoutonTempsReel() {
+    var bouton = $('#btn-temps-reel');
+    if (!bouton) return;
+    var libelles = {
+      inactif: 'Charger l’état des bornes',
+      chargement: 'Chargement…',
+      ok: 'Actualiser l’état des bornes',
+      erreur: 'Réessayer'
+    };
+    bouton.textContent = libelles[tempsReel.etat] || libelles.inactif;
+    bouton.disabled = tempsReel.etat === 'chargement';
+
+    var aide = $('#aide-dispo');
+    if (tempsReel.etat === 'ok' && tempsReel.resume) {
+      aide.textContent = 'État remonté par les opérateurs pour ' +
+        tempsReel.resume.stations.toLocaleString('fr-FR') + ' stations. La fraîcheur ' +
+        'varie selon l’opérateur : un relevé de plus de deux heures est affiché ' +
+        'avec son âge, jamais comme un état courant.';
+    } else {
+      aide.textContent = '« Ouvertes maintenant » s’appuie sur les horaires déclarés. ' +
+        '« Libres maintenant » demande l’état réel des bornes (environ 2 Mo, ' +
+        'base nationale IRVE dynamique).';
+    }
+  }
+
+  /* Un message répondant à une action de l'utilisateur ne doit pas être balayé
+   * par un chargement qui se termine une seconde plus tard. */
   var bandeauPrioritaireJusqua = 0;
 
   function bandeau(texte, prioritaire, bouton) {
@@ -861,20 +889,13 @@
     rendreChipsPuissance(); rendreChipsDispo(); rendreChipsPrises();
     rendreChipsServices(); rendreReseaux();
     rafraichir();
-    majTempsReel();
+    majBoutonTempsReel();
     $('#chargement').hidden = true;
     geolocaliserAuDemarrage();
   }
 
-  var minuteurDeplacement = null;
-  function deplacementCarte() {
-    clearTimeout(minuteurDeplacement);
-    minuteurDeplacement = setTimeout(function () {
-      if (etat.dispo === 'libres' || tempsReel.parStation.size || tempsReel.etat === 'inactif') {
-        majTempsReel();
-      }
-    }, 700);
-  }
+  /* Le flux est national : plus rien à recharger quand la carte bouge. */
+  function deplacementCarte() {}
 
   function brancherInterface() {
     var champ = $('#champ-lieu');
@@ -921,6 +942,7 @@
     });
 
     $('#btn-geoloc').addEventListener('click', function () { geolocaliser(false); });
+    $('#btn-temps-reel').addEventListener('click', function () { majTempsReel(); });
 
     $('#champ-rayon').addEventListener('input', function () {
       etat.rayon = +this.value;
