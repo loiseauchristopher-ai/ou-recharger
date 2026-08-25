@@ -198,15 +198,18 @@
           </div>
         </div>
 
-        <label class="champ">
-          <span>Départ</span>
-          <input type="search" id="champ-depart" placeholder="Ville, adresse — ou ma position"
-                 autocomplete="off">
-        </label>
-        <label class="champ">
-          <span>Arrivée</span>
-          <input type="search" id="champ-arrivee" placeholder="Ville ou adresse" autocomplete="off">
-        </label>
+        <div class="champ champ-lieu">
+          <label for="champ-depart">Départ</label>
+          <input type="search" id="champ-depart" placeholder="Adresse, ville — ou ma position"
+                 autocomplete="off" spellcheck="false">
+          <ul class="suggestions" id="suggestions-depart" hidden></ul>
+        </div>
+        <div class="champ champ-lieu">
+          <label for="champ-arrivee">Arrivée</label>
+          <input type="search" id="champ-arrivee" placeholder="Adresse ou ville"
+                 autocomplete="off" spellcheck="false">
+          <ul class="suggestions" id="suggestions-arrivee" hidden></ul>
+        </div>
 
         <button type="button" class="bouton primaire pleine-largeur" id="btn-trajet">
           Calculer les arrêts
@@ -247,6 +250,7 @@
 <script src="donnees/vehicules.js"></script>
 <script src="js/parc.js"></script>
 <script src="js/trajets-enregistres.js"></script>
+<script src="js/trajet-en-cours.js"></script>
 <script src="js/dispo.js"></script>
 <script src="js/trajet.js"></script>
 <script src="js/international.js"></script>

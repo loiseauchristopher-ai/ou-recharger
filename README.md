@@ -183,6 +183,20 @@ d'autonomie**, puisque c'est ce que le tableau de bord affiche ; les deux
 entrées pilotent la même valeur, et la consommation corrigée est rendue au
 véhicule.
 
+**Saisie assistée.** Départ et arrivée proposent des adresses dès trois
+caractères : les communes de l'instantané répondent instantanément et hors
+ligne, la Base Adresse Nationale ajoute le numéro et la rue. Une proposition
+retenue est déjà localisée — la renvoyer au géocodage risquerait de tomber sur
+un autre lieu du même nom.
+
+**Reprendre en route.** Waze et Plans ne gèrent qu'une destination : on y part
+pour un arrêt, on recharge, puis il faut relancer. L'application garde donc le
+plan en cours et l'arrêt visé. Au retour, un bandeau rappelle où l'on en est —
+« arrêt 2 sur 3, 1 fait » — avec les liens vers l'étape suivante et un bouton
+« J'ai rechargé ». Si la position est connue, l'arrivée sur un arrêt est
+reconnue et proposée ; elle n'est jamais cochée d'office, mieux vaut demander
+que se tromper. Le suivi expire au bout de vingt-quatre heures.
+
 **Lancer la navigation avec les arrêts.** Google Maps est le seul à accepter des
 étapes intermédiaires dans une URL, et neuf au maximum : le bouton principal
 ouvre donc l'itinéraire complet, arrêts compris. Waze et Plans ne prennent

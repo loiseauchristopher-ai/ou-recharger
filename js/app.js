@@ -983,6 +983,67 @@
     return out;
   }
 
+  /* Autocomplétion d'un champ de lieu.
+   *
+   * Les communes de l'instantané répondent instantanément et hors ligne ; la
+   * Base Adresse Nationale ajoute le numéro et la rue, qu'aucune donnée
+   * embarquée ne peut fournir. Les deux se complètent, et la saisie reste
+   * utilisable quand le réseau manque.
+   */
+  function brancherSuggestions(champSelecteur, listeSelecteur) {
+    var champ = $(champSelecteur);
+    var liste = $(listeSelecteur);
+    var minuteur = null;
+    var dernierChoix = null;
+
+    function afficher(propositions) {
+      if (!propositions.length) { liste.hidden = true; liste.innerHTML = ''; return; }
+      liste.innerHTML = propositions.map(function (s, k) {
+        return '<li data-k="' + k + '" role="option">' + echapper(s.libelle) +
+          (s.detail ? ' <span class="sug-detail">' + echapper(s.detail) + '</span>' : '') + '</li>';
+      }).join('');
+      liste.hidden = false;
+      liste._propositions = propositions;
+    }
+
+    champ.addEventListener('input', function () {
+      dernierChoix = null;
+      clearTimeout(minuteur);
+      var q = champ.value.trim();
+      if (q.length < 3) { liste.hidden = true; return; }
+      afficher(suggestionsLocales(q));
+      minuteur = setTimeout(function () {
+        suggestionsBan(q).then(function (ban) {
+          if (champ.value.trim() !== q) return;
+          var locales = suggestionsLocales(q);
+          var connus = {};
+          ban.forEach(function (b) { connus[B.sansAccent(b.libelle)] = true; });
+          /* L'adresse précise vient en tête : c'est ce qu'on cherche en tapant
+           * un numéro et une rue. */
+          afficher(ban.concat(locales.filter(function (s) {
+            return !connus[B.sansAccent(s.libelle)];
+          })).slice(0, 7));
+        });
+      }, 250);
+    });
+
+    liste.addEventListener('click', function (ev) {
+      var li = ev.target.closest('li');
+      if (!li || !liste._propositions) return;
+      dernierChoix = liste._propositions[+li.dataset.k];
+      champ.value = dernierChoix.libelle;
+      liste.hidden = true;
+    });
+
+    champ.addEventListener('blur', function () {
+      setTimeout(function () { liste.hidden = true; }, 180);
+    });
+
+    return { choix: function () { return dernierChoix; } };
+  }
+
+  var lieuDepart = null, lieuArrivee = null;
+
   function lieuDepuisTexte(texte, secours) {
     var q = (texte || '').trim();
     if (!q) {
@@ -1013,10 +1074,22 @@
     zone.innerHTML = '<p class="aide">Calcul de l’itinéraire…</p>';
 
     var enregistre = arguments[0] && arguments[0].depart ? arguments[0] : null;
+
+    /* Une proposition retenue dans la liste est déjà localisée : la renvoyer au
+     * géocodage risquerait de tomber sur un autre lieu du même nom. */
+    function lieuChoisi(controleur, champ) {
+      var choix = controleur && controleur.choix();
+      return choix && choix.libelle === $(champ).value.trim() ? choix : null;
+    }
+    var choixDepart = lieuChoisi(lieuDepart, '#champ-depart');
+    var choixArrivee = lieuChoisi(lieuArrivee, '#champ-arrivee');
+
     Promise.all(enregistre
       ? [Promise.resolve(enregistre.depart), Promise.resolve(enregistre.arrivee)]
-      : [lieuDepuisTexte($('#champ-depart').value, etat.centre),
-         lieuDepuisTexte($('#champ-arrivee').value)]
+      : [choixDepart ? Promise.resolve(choixDepart)
+                     : lieuDepuisTexte($('#champ-depart').value, etat.centre),
+         choixArrivee ? Promise.resolve(choixArrivee)
+                      : lieuDepuisTexte($('#champ-arrivee').value)]
     ).then(function (lieux) {
       trajet.lieux = lieux;
       return B.trajet.itineraire(lieux[0], lieux[1]);
@@ -1100,6 +1173,8 @@
       '<br>Arrivée à <strong>' + Math.round(plan.chargeArrivee) + ' %</strong>' +
       ' — autonomie au départ ' + Math.round(plan.autonomieDepart) + ' km.' +
       '</div>';
+    B.trajetEnCours.demarrer(plan, trajet.lieux, jeu);
+    rendreCockpit();
     zone.innerHTML = resume + rendreNavigationTrajet(plan, trajet.lieux) +
       '<div class="fiche-actions"><button type="button" class="bouton" id="btn-garder-trajet">' +
       'Enregistrer ce trajet</button></div>';
@@ -1179,6 +1254,101 @@
     return h + ' h' + (reste ? ' ' + String(reste).padStart(2, '0') : '');
   }
 
+  /* ------------------------------------------------- Trajet en cours */
+
+  /* Bandeau de suivi : où en est-on, et que faire ensuite. Affiché en tête du
+   * cockpit tant qu'un trajet est commencé. */
+  function rendreSuivi() {
+    var suivi = B.trajetEnCours.lire();
+    if (!suivi) return '';
+
+    var suite = B.trajetEnCours.prochaine(suivi);
+    var total = suivi.etapes.length;
+    var faites = suivi.faites.length;
+
+    if (!suite) {
+      return '<div class="suivi termine">' +
+        '<div class="suivi-haut"><strong>Tous les arrêts sont faits</strong>' +
+        '<button type="button" class="lien" id="suivi-terminer">terminer</button></div>' +
+        '<p class="suivi-detail">Direction ' + echapper(suivi.arrivee.libelle) + '.</p>' +
+        '<div class="fiche-actions">' + liensVers(suivi.arrivee, 'arrivee') + '</div></div>';
+    }
+
+    var e = suite.etape;
+    return '<div class="suivi">' +
+      '<div class="suivi-haut"><strong>Trajet en cours</strong>' +
+      '<button type="button" class="lien" id="suivi-terminer">abandonner</button></div>' +
+      '<p class="suivi-detail">Arrêt ' + (suite.rang + 1) + ' sur ' + total +
+      (faites ? ' · ' + faites + ' fait' + (faites > 1 ? 's' : '') : '') + '</p>' +
+      '<div class="suivi-etape"><strong>' + echapper(e.nom) + '</strong>' +
+      '<div class="suivi-detail">' + echapper(e.reseau) + ' · ' + formatKw(e.kw) +
+      ' · au km ' + Math.round(e.km) +
+      (e.minutes ? ' · environ ' + formatDuree(e.minutes) + ' de charge' : '') + '</div></div>' +
+      '<div class="fiche-actions">' + liensVers(e, 'etape') + '</div>' +
+      '<button type="button" class="bouton pleine-largeur" id="suivi-fait" ' +
+      'data-rang="' + suite.rang + '">J’ai rechargé — étape suivante</button>' +
+      '</div>';
+  }
+
+  function liensVers(point, genre) {
+    return applisNavigation(point.lat, point.lon)
+      .filter(function (a) { return a.nom !== 'OpenStreetMap'; })
+      .map(function (a) {
+        return '<a class="bouton lien-navigation' + (a.nom === 'Waze' ? ' primaire' : '') +
+          '" target="_blank" rel="noopener" data-genre="' + genre + '" href="' +
+          a.url + '">' + a.nom + '</a>';
+      }).join('');
+  }
+
+  function brancherSuivi() {
+    var terminer = $('#suivi-terminer');
+    if (terminer) {
+      terminer.addEventListener('click', function () {
+        B.trajetEnCours.oublier();
+        rendreCockpit();
+      });
+    }
+    var fait = $('#suivi-fait');
+    if (fait) {
+      fait.addEventListener('click', function () {
+        B.trajetEnCours.marquerFaite(+this.dataset.rang);
+        rendreCockpit();
+      });
+    }
+    brancherLiensNavigation($('#cockpit'));
+  }
+
+  /* Au retour dans l'application — onglet réactivé, ou page rouverte — on
+   * regarde où l'on se trouve. Un arrêt atteint est proposé comme fait, plutôt
+   * que coché d'office : mieux vaut demander que se tromper. */
+  var suiviVerifie = 0;
+
+  function verifierProgression() {
+    var suivi = B.trajetEnCours.lire();
+    if (!suivi || !navigator.geolocation) return;
+    if (Date.now() - suiviVerifie < 10000) return;      // pas à chaque bascule
+    suiviVerifie = Date.now();
+
+    navigator.geolocation.getCurrentPosition(function (p) {
+      var ou = B.trajetEnCours.situer(suivi, p.coords.latitude, p.coords.longitude);
+      if (!ou) return;
+      if (ou.arrive) {
+        bandeau('Vous êtes arrivé à ' + suivi.arrivee.libelle + '. Bon trajet !', true);
+        B.trajetEnCours.oublier();
+        rendreCockpit();
+        return;
+      }
+      if (suivi.faites.indexOf(ou.rang) >= 0) return;   // déjà noté
+      bandeau('Vous êtes à ' + ou.etape.nom + '. Une fois rechargé, touchez ' +
+        '« J’ai rechargé » pour passer à l’étape suivante.', true);
+      B.trajetEnCours.viser(ou.rang);
+      rendreCockpit();
+    }, function () { /* position refusée : le bouton manuel suffit */ },
+       /* Deux minutes de cache, c'est plusieurs kilomètres sur autoroute : la
+        * position servirait alors à situer un arrêt déjà dépassé. */
+       { maximumAge: 30000, timeout: 8000 });
+  }
+
   /* ---------------------------------------------------------- Cockpit */
 
   /* L'écran d'accueil doit répondre à une seule question : « est-ce que je
@@ -1187,9 +1357,10 @@
   function rendreCockpit() {
     var boite = $('#cockpit');
     var actif = B.parc.actif();
+    var suivi = rendreSuivi();
 
     if (!actif) {
-      boite.innerHTML = '<div class="cockpit-haut"><span class="cockpit-nom">' +
+      boite.innerHTML = suivi + '<div class="cockpit-haut"><span class="cockpit-nom">' +
         'Aucun véhicule enregistré</span></div>' +
         '<p class="cockpit-detail">Enregistrez le vôtre : l’application saura ' +
         'alors si vous atteignez votre destination, et où vous arrêter sinon.</p>' +
@@ -1199,6 +1370,7 @@
       $('#cockpit-ajouter-vehicule').addEventListener('click', function () {
         ouvrirParametres('marques');
       });
+      brancherSuivi();
       return;
     }
 
@@ -1206,7 +1378,7 @@
     var km = Math.round(actif.batterie * pourcent / 100 / actif.conso * 100);
     var classe = pourcent <= 15 ? ' critique' : (pourcent <= 30 ? ' faible' : '');
 
-    boite.innerHTML =
+    boite.innerHTML = suivi +
       '<div class="cockpit-haut">' +
       '<span class="cockpit-nom">' + echapper(actif.nom) + '</span>' +
       '<span class="cockpit-etat">' + km + ' km</span></div>' +
@@ -1234,6 +1406,7 @@
     boite.querySelectorAll('[data-trajet]').forEach(function (b) {
       b.addEventListener('click', function () { lancerTrajetEnregistre(this.dataset.trajet); });
     });
+    brancherSuivi();
   }
 
   /* « Est-ce que j'arrive ? » — la question se pose avant de partir, pas une
@@ -1640,6 +1813,8 @@
       $('#valeur-reserve').textContent = this.value + ' %';
       majConso(false);
     });
+    lieuDepart = brancherSuggestions('#champ-depart', '#suggestions-depart');
+    lieuArrivee = brancherSuggestions('#champ-arrivee', '#suggestions-arrivee');
     $('#btn-trajet').addEventListener('click', calculerTrajet);
 
     $('#btn-parametres').addEventListener('click', function () { ouvrirParametres(); });
@@ -1787,6 +1962,7 @@
     rafraichir();
     majBoutonTempsReel();
     $('#chargement').hidden = true;
+    verifierProgression();
     geolocaliserAuDemarrage();
   }
 
@@ -1944,6 +2120,12 @@
     });
 
     global.addEventListener('resize', function () { carte.redimensionner(); });
+
+    /* Retour dans l'application après un passage par le GPS. */
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) verifierProgression();
+    });
+    global.addEventListener('focus', verifierProgression);
   }
 
   if (document.readyState === 'loading') {

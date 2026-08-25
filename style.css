@@ -288,6 +288,9 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   font: inherit; font-size: 13px;
 }
 
+.champ-lieu { position: relative; }
+.champ-lieu .suggestions { top: calc(100% + 2px); }
+
 .autonomie {
   display: flex; justify-content: space-between; align-items: center;
   gap: 8px; margin-top: 6px; font-size: 12px; color: var(--texte-doux);
@@ -441,6 +444,17 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   border: 1px solid var(--trait); border-radius: var(--rayon);
   padding: 12px; margin-bottom: 12px; background: var(--surface);
 }
+.suivi {
+  border: 1px solid var(--accent); border-radius: var(--rayon);
+  background: var(--accent-doux); padding: 11px; margin-bottom: 12px;
+}
+.suivi.termine { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.suivi-haut { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.suivi-detail { margin: 2px 0 0; font-size: 12px; color: var(--texte-doux); }
+.suivi-etape { margin-top: 8px; font-size: 13.5px; }
+.suivi .fiche-actions { margin-top: 9px; }
+.suivi .bouton.pleine-largeur { margin-top: 8px; }
+
 .cockpit-haut { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .cockpit-nom { font-weight: 600; font-size: 14px; }
 .cockpit-etat {
