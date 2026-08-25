@@ -1039,6 +1039,36 @@
       setTimeout(function () { liste.hidden = true; }, 180);
     });
 
+    /* Dictée : le bouton n'apparaît que si le navigateur sait écouter. Ailleurs,
+     * le clavier du téléphone garde sa propre dictée, qui remplit le champ de
+     * la même façon. */
+    var micro = $(champSelecteur.replace('#champ-', '#micro-'));
+    if (micro && B.dictee.disponible()) {
+      micro.hidden = false;
+      var ecoute = null;
+      micro.addEventListener('click', function () {
+        if (ecoute) { ecoute.stop(); ecoute = null; return; }
+        ecoute = B.dictee.ecouter({
+          surEtat: function (etatDictee) {
+            micro.classList.toggle('ecoute', etatDictee === 'ecoute');
+            if (etatDictee === 'fini') {
+              ecoute = null;
+              /* La phrase reconnue déclenche les propositions d'adresses. */
+              champ.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          },
+          surTexte: function (mots) {
+            champ.value = mots;
+          },
+          surErreur: function (message) {
+            micro.classList.remove('ecoute');
+            ecoute = null;
+            bandeau('Dictée : ' + message + '.', true);
+          }
+        });
+      });
+    }
+
     return { choix: function () { return dernierChoix; } };
   }
 
@@ -1160,18 +1190,66 @@
       '</p>';
   }
 
+  /* Heures estimées d'un trajet.
+   *
+   * Waze ne sait pas afficher l'arrivée finale quand on ne lui donne que le
+   * prochain arrêt : c'est à l'application de la calculer. On répartit la durée
+   * de route au prorata de la distance parcourue, puis on ajoute les recharges.
+   *
+   * Ces heures ignorent le trafic — OSRM donne des temps à circulation libre.
+   * C'est dit dans l'interface plutôt que laissé à deviner. */
+  function heuresDuTrajet(plan, route, depart) {
+    var parKm = route.distance > 0 ? route.duree / route.distance : 0;
+    var chargeCumulee = 0;
+    var etapes = plan.etapes.map(function (e) {
+      var arrivee = new Date(depart.getTime() +
+        (e.km * parKm + chargeCumulee) * 60000);
+      chargeCumulee += e.minutes || 0;
+      var reprise = new Date(depart.getTime() + (e.km * parKm + chargeCumulee) * 60000);
+      return { arrivee: arrivee, reprise: reprise };
+    });
+    return {
+      etapes: etapes,
+      arrivee: new Date(depart.getTime() + (route.duree + chargeCumulee) * 60000),
+      recharge: chargeCumulee
+    };
+  }
+
+  function formatHeure(date) {
+    return date.getHours() + ' h ' + String(date.getMinutes()).padStart(2, '0');
+  }
+
+  function heureDepart() {
+    var champ = $('#champ-heure');
+    var maintenant = new Date();
+    if (!champ || !champ.value) return maintenant;
+    var bouts = champ.value.split(':');
+    var depart = new Date(maintenant);
+    depart.setHours(+bouts[0], +bouts[1], 0, 0);
+    /* Une heure déjà passée désigne le lendemain. */
+    if (depart < maintenant - 60000) depart.setDate(depart.getDate() + 1);
+    return depart;
+  }
+
   function afficherTrajet(plan, route, v, nbCandidates) {
     var zone = $('#resultat-trajet');
     var minutes = plan.etapes.reduce(function (t, e) { return t + (e.minutes || 0); }, 0);
+    var depart = heureDepart();
+    var heures = heuresDuTrajet(plan, route, depart);
+    trajet.heures = heures;
+
     var resume = '<div class="trajet-resume">' +
-      '<strong>' + Math.round(plan.distance) + ' km</strong> · ' +
-      '<strong>' + formatDuree(route.duree) + '</strong> de route' +
+      '<div class="resume-arrivee">Arrivée vers <strong>' + formatHeure(heures.arrivee) +
+      '</strong></div>' +
+      '<div>' + Math.round(plan.distance) + ' km · ' + formatDuree(route.duree) + ' de route' +
       (plan.etapes.length
-        ? ' · <strong>' + plan.etapes.length + '</strong> arrêt' +
-          (plan.etapes.length > 1 ? 's' : '') + ' (' + formatDuree(minutes) + ' de recharge)'
-        : ' · <strong>aucun arrêt nécessaire</strong>') +
-      '<br>Arrivée à <strong>' + Math.round(plan.chargeArrivee) + ' %</strong>' +
-      ' — autonomie au départ ' + Math.round(plan.autonomieDepart) + ' km.' +
+        ? ' · ' + plan.etapes.length + ' arrêt' + (plan.etapes.length > 1 ? 's' : '') +
+          ' (' + formatDuree(minutes) + ' de recharge)'
+        : ' · aucun arrêt nécessaire') + '</div>' +
+      '<div>Départ ' + formatHeure(depart) + ' · arrivée à ' +
+      Math.round(plan.chargeArrivee) + ' % de batterie</div>' +
+      '<div class="resume-reserve">Heures estimées sans tenir compte du trafic — ' +
+      'Waze les ajustera en route.</div>' +
       '</div>';
     B.trajetEnCours.demarrer(plan, trajet.lieux, jeu);
     rendreCockpit();
@@ -1188,7 +1266,7 @@
       this.disabled = true;
       rendreCockpit();
     });
-    if (plan.etapes.length) afficherEtapes(plan.etapes, v, false);
+    if (plan.etapes.length) afficherEtapes(plan.etapes, v, false, heures);
 
     carte.definirRoute({
       points: route.points,
@@ -1205,7 +1283,7 @@
     });
   }
 
-  function afficherEtapes(etapes, v, partiel) {
+  function afficherEtapes(etapes, v, partiel, heures) {
     var zone = $('#resultat-trajet');
     var html = '<ol class="etapes">' + etapes.map(function (e, rang) {
       var i = e.station;
@@ -1217,9 +1295,14 @@
         formatKw(jeu.kw(i)) + ' · ' + jeu.points[i] + ' points' +
         (e.detour > 0.4 ? ' · ' + e.detour.toFixed(1).replace('.', ',') + ' km d’écart' : '') +
         '</div>' +
-        '<div class="etape-detail">Arrivée à ' + Math.round(e.chargeArrivee) + ' %, ' +
-        'repart à ' + Math.round(e.chargeDepart) + ' %' +
-        (e.minutes ? ' — environ ' + formatDuree(e.minutes) + ' de charge' : '') + '</div>' +
+        '<div class="etape-detail">' +
+        (heures && heures.etapes[rang]
+          ? '<strong>' + formatHeure(heures.etapes[rang].arrivee) + '</strong> → repart ' +
+            formatHeure(heures.etapes[rang].reprise) + ' · '
+          : '') +
+        Math.round(e.chargeArrivee) + ' % en arrivant, ' +
+        Math.round(e.chargeDepart) + ' % au départ' +
+        (e.minutes ? ' (' + formatDuree(e.minutes) + ' de charge)' : '') + '</div>' +
         (d.genre !== 'horaires' && d.genre !== 'inconnu'
           ? '<div class="etape-detail">' + echapper(d.texte) + '</div>' : '') +
         '<div class="etape-actions">' +

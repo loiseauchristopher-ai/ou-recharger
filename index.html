@@ -202,13 +202,25 @@
           <label for="champ-depart">Départ</label>
           <input type="search" id="champ-depart" placeholder="Adresse, ville — ou ma position"
                  autocomplete="off" spellcheck="false">
+          <button type="button" class="micro" id="micro-depart" hidden
+                  aria-label="Dicter l’adresse">🎤</button>
           <ul class="suggestions" id="suggestions-depart" hidden></ul>
         </div>
         <div class="champ champ-lieu">
           <label for="champ-arrivee">Arrivée</label>
           <input type="search" id="champ-arrivee" placeholder="Adresse ou ville"
                  autocomplete="off" spellcheck="false">
+          <button type="button" class="micro" id="micro-arrivee" hidden
+                  aria-label="Dicter l’adresse">🎤</button>
           <ul class="suggestions" id="suggestions-arrivee" hidden></ul>
+        </div>
+
+        <div class="champ">
+          <label for="champ-heure">Heure de départ</label>
+          <div class="autonomie">
+            <span>Laissez vide pour partir maintenant</span>
+            <span><input type="time" id="champ-heure"></span>
+          </div>
         </div>
 
         <button type="button" class="bouton primaire pleine-largeur" id="btn-trajet">
@@ -248,6 +260,7 @@
 <script src="js/tuiles.js"></script>
 <script src="js/horaires.js"></script>
 <script src="donnees/vehicules.js"></script>
+<script src="js/dictee.js"></script>
 <script src="js/parc.js"></script>
 <script src="js/trajets-enregistres.js"></script>
 <script src="js/trajet-en-cours.js"></script>

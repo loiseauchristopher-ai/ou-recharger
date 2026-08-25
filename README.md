@@ -196,6 +196,21 @@ ligne, la Base Adresse Nationale ajoute le numéro et la rue. Une proposition
 retenue est déjà localisée — la renvoyer au géocodage risquerait de tomber sur
 un autre lieu du même nom.
 
+**Heures d'arrivée.** Waze n'affiche pas l'arrivée finale quand on ne lui donne
+que le prochain arrêt : c'est à l'application de la calculer. La durée de route
+est répartie au prorata de la distance, les recharges s'y ajoutent, et chaque
+étape porte son heure — « 10 h 07 → repart 11 h 08 ». Ces heures ignorent le
+trafic, OSRM donnant des temps à circulation libre ; c'est dit dans l'interface
+plutôt que laissé à deviner.
+
+**Dictée.** Départ et arrivée acceptent la voix là où le navigateur sait
+écouter — Safari depuis iOS 14.5, Chrome. Les nombres dictés en toutes lettres
+sont convertis, y compris les formes composées : « trente quatre avenue Pierre
+Molette » devient « 34 avenue Pierre Molette », « soixante quinze » vaut 75 et
+« quatre vingt dix sept » 97. Seul le nombre en tête est converti — « rue des
+Quatre Vents » reste intacte. Le bouton n'apparaît pas là où l'API manque : le
+clavier du téléphone garde de toute façon sa propre dictée.
+
 **Reprendre en route.** Waze et Plans ne gèrent qu'une destination : on y part
 pour un arrêt, on recharge, puis il faut relancer. L'application garde donc le
 plan en cours et l'arrêt visé. Au retour, un bandeau rappelle où l'on en est —
