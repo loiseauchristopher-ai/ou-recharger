@@ -68,16 +68,101 @@
     /* Index de recherche texte : commune + code postal, sans accents. */
     this.villesNorm = paquet.villes.map(sansAccent);
 
-    /* Classement des reseaux par nombre de stations, pour la liste de filtres. */
-    var compte = new Uint32Array(paquet.reseaux.length);
-    var pdc = new Uint32Array(paquet.reseaux.length);
-    for (var i = 0; i < n; i++) { compte[this.reseau[i]]++; pdc[this.reseau[i]] += this.points[i]; }
-    this.reseauxClasses = paquet.reseaux
+    this._classerReseaux();
+  }
+
+  /* Classement des reseaux par nombre de stations, pour la liste de filtres. */
+  Jeu.prototype._classerReseaux = function () {
+    var compte = new Uint32Array(this.reseaux.length);
+    var pdc = new Uint32Array(this.reseaux.length);
+    for (var i = 0; i < this.taille; i++) {
+      compte[this.reseau[i]]++;
+      pdc[this.reseau[i]] += this.points[i];
+    }
+    this.reseauxClasses = this.reseaux
       .map(function (nom, idx) {
         return { idx: idx, nom: nom, stations: compte[idx], points: pdc[idx] };
       })
+      .filter(function (r) { return r.stations > 0; })
       .sort(function (a, b) { return b.stations - a.stations || a.nom.localeCompare(b.nom); });
+  };
+
+  /* Ajoute des stations venues d'ailleurs (OpenStreetMap, hors de France).
+   *
+   * Les colonnes sont des TypedArrays de taille fixe : on realloue. L'operation
+   * est rare — elle n'a lieu que lorsque l'utilisateur demande une zone hors du
+   * jeu francais — et reste bien plus simple qu'un second jeu a maintenir en
+   * parallele dans le filtrage et le rendu.
+   */
+  function etendre(TableauType, ancien, taille) {
+    var neuf = new TableauType(taille);
+    neuf.set(ancien);
+    return neuf;
   }
+
+  Jeu.prototype.ajouter = function (stations) {
+    if (!stations || !stations.length) return 0;
+    var depart = this.taille;
+    var taille = depart + stations.length;
+
+    this.lat = etendre(Int32Array, this.lat, taille);
+    this.lon = etendre(Int32Array, this.lon, taille);
+    this.puissance = etendre(Uint16Array, this.puissance, taille);
+    this.points = etendre(Uint16Array, this.points, taille);
+    this.reseau = etendre(Uint16Array, this.reseau, taille);
+    this.prises = etendre(Uint8Array, this.prises, taille);
+    this.drapeaux = etendre(Uint8Array, this.drapeaux, taille);
+    this.implantation = etendre(Uint8Array, this.implantation, taille);
+    this.horaireIdx = etendre(Uint16Array, this.horaireIdx, taille);
+    this.villeIdx = etendre(Uint16Array, this.villeIdx, taille);
+    this.cpIdx = etendre(Uint16Array, this.cpIdx, taille);
+    this.majIdx = etendre(Uint16Array, this.majIdx, taille);
+
+    var self = this;
+    function indexer(valeur, table, norme) {
+      var v = valeur || '';
+      var rang = table.indexOf(v);
+      if (rang < 0) {
+        rang = table.length;
+        table.push(v);
+        if (norme) norme.push(global.Bornes.sansAccent(v));
+      }
+      return rang;
+    }
+
+    for (var k = 0; k < stations.length; k++) {
+      var s = stations[k];
+      var i = depart + k;
+      this.lat[i] = Math.round(s.lat * 1e5);
+      this.lon[i] = Math.round(s.lon * 1e5);
+      this.puissance[i] = Math.min(65535, Math.round((s.kw || 0) * 10));
+      this.points[i] = Math.min(65535, s.points || 1);
+      this.reseau[i] = indexer(s.reseau, this.reseaux);
+      this.prises[i] = s.prises || 0;
+      this.drapeaux[i] = s.drapeaux || 0;
+      this.implantation[i] = this.implantations.length - 1;      // « Autre »
+      this.horaireIdx[i] = indexer(s.horaires, this.horaires);
+      this.villeIdx[i] = indexer(s.ville, this.villes, this.villesNorm);
+      this.cpIdx[i] = indexer(s.cp, this.cps);
+      this.majIdx[i] = indexer('', this.majs);
+      this.nom.push(s.nom || '');
+      this.adresse.push(s.adresse || '');
+      this.externe = this.externe || {};
+      this.externe[i] = s.source || 'externe';
+    }
+
+    this.taille = taille;
+    this.nbPoints = 0;
+    for (var j = 0; j < taille; j++) this.nbPoints += this.points[j];
+    this._classerReseaux();
+    return stations.length;
+  };
+
+  /* Une station venue d'OpenStreetMap n'a ni etat temps reel ni identifiant
+   * d'itinerance : l'interface doit pouvoir le dire. */
+  Jeu.prototype.estExterne = function (i) {
+    return !!(this.externe && this.externe[i]);
+  };
 
   Jeu.prototype.latitude = function (i) { return this.lat[i] / 1e5; };
   Jeu.prototype.longitude = function (i) { return this.lon[i] / 1e5; };

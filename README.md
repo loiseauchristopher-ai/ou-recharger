@@ -1,7 +1,8 @@
 # Où recharger — recherche de bornes de recharge
 
 Application web de recherche de bornes de recharge pour véhicule électrique en
-France : **38 980 stations**, **154 426 points de charge**, filtrables par
+France : **38 980 stations**, **154 426 points de charge** — et le reste du monde
+à la demande via OpenStreetMap. Filtrables par
 réseau/marque, puissance, type de prise, services et disponibilité.
 
 Aucune dépendance, aucun build : `index.html` s'ouvre tel quel. La carte est
@@ -102,6 +103,34 @@ une vue très inclinée porte sinon jusqu'à l'infini.
 Il ne s'agit pas de bâtiments en volume : ceux-là demandent des tuiles
 vectorielles, donc une clé d'API. C'est une mise en perspective du plan, comme
 les cartes routières avant l'arrivée du rendu vectoriel.
+
+## Hors de France
+
+Le jeu IRVE s'arrête aux frontières. Ailleurs, l'application interroge
+**OpenStreetMap** via l'API Overpass : dès que le centre de la carte sort du
+territoire français, une invite propose de charger les bornes de la zone
+affichée. Rien n'est embarqué — la zone est demandée à la volée, puis mise en
+cache, et les stations rejoignent le même jeu de données que les françaises,
+filtrables de la même manière.
+
+L'appartenance à la France est testée sur le tracé des départements, déjà chargé
+pour le fond de carte : un rectangle englobant la métropole prendrait aussi la
+Belgique, la Suisse et une part de l'Allemagne, et n'y proposerait jamais les
+bornes étrangères.
+
+**Deux différences, annoncées dans l'interface :**
+
+- **Données contributives.** Leur complétude varie fortement d'un pays et d'une
+  région à l'autre. La puissance, notamment, n'est renseignée que sur une borne
+  sur deux environ — un filtre de puissance masque donc les stations qui ne la
+  déclarent pas.
+- **Aucun état temps réel.** Il n'existe qu'en France, où le règlement AFIR
+  impose sa publication. À l'étranger, seuls les horaires déclarés sont connus,
+  et la fiche de station le dit explicitement.
+
+L'API Overpass est un service public souvent saturé : trois miroirs sont
+essayés tour à tour, et une zone trop vaste est refusée plutôt que de lancer une
+requête vouée à expirer.
 
 ## Planifier un trajet
 

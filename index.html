@@ -162,6 +162,12 @@
       </div>
       <div class="fonds" id="fonds" role="group" aria-label="Fond de carte"></div>
       <p class="attribution" id="attribution"></p>
+      <div class="hors-france" id="hors-france" hidden>
+        <p id="hors-france-texte">Hors de France, les bornes viennent d’OpenStreetMap.</p>
+        <button type="button" class="bouton primaire" id="btn-international">
+          Charger les bornes de cette zone
+        </button>
+      </div>
       <div class="legende" id="legende"></div>
       <div class="bandeau-carte" id="bandeau-carte" hidden></div>
     </div>
@@ -205,6 +211,7 @@
 <script src="donnees/vehicules.js"></script>
 <script src="js/dispo.js"></script>
 <script src="js/trajet.js"></script>
+<script src="js/international.js"></script>
 <script src="js/carte.js"></script>
 <script src="js/app.js"></script>
 </body>

@@ -255,6 +255,125 @@
       ' station' + pluriel + (points ? ' · ' + points.toLocaleString('fr-FR') + ' points de charge' : '');
   }
 
+  /* ------------------------------------------------------ Hors de France */
+
+  /* Départements d'outre-mer, absents du tracé métropolitain. */
+  var ZONES_DROM = [
+    [-61.9, 15.7, -60.7, 16.6],   // Guadeloupe
+    [-61.3, 14.3, -60.7, 14.9],   // Martinique
+    [-54.7, 2.0, -51.5, 5.9],     // Guyane
+    [55.1, -21.5, 55.9, -20.8],   // La Réunion
+    [45.0, -13.1, 45.4, -12.6]    // Mayotte
+  ];
+
+  /* Le point est-il couvert par le jeu IRVE ?
+   *
+   * Un rectangle englobant la métropole prendrait aussi la Belgique, la Suisse
+   * et une partie de l'Allemagne — et n'y proposerait jamais les bornes
+   * étrangères. On teste donc l'appartenance au tracé des départements, déjà
+   * chargé pour le fond de carte, par lancer de rayon. Le tracé est simplifié :
+   * la frontière est juste à quelques kilomètres près, ce qui suffit ici. */
+  function dansZoneFrancaise(lat, lon) {
+    for (var d = 0; d < ZONES_DROM.length; d++) {
+      var z = ZONES_DROM[d];
+      if (lon >= z[0] && lon <= z[2] && lat >= z[1] && lat <= z[3]) return true;
+    }
+    var traces = global.FOND_CARTE;
+    if (!traces) return false;
+    for (var t = 0; t < traces.length; t++) {
+      if (dansPolygone(lon, lat, traces[t])) return true;
+    }
+    return false;
+  }
+
+  function dansPolygone(x, y, sommets) {
+    var dedans = false;
+    for (var i = 0, j = sommets.length - 1; i < sommets.length; j = i++) {
+      var xi = sommets[i][0], yi = sommets[i][1];
+      var xj = sommets[j][0], yj = sommets[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+        dedans = !dedans;
+      }
+    }
+    return dedans;
+  }
+
+  var international = { etat: 'inactif', ajoutees: 0 };
+
+  function majCompteurTotal() {
+    $('#compteur-total').textContent = jeu.taille.toLocaleString('fr-FR') + ' stations · ' +
+      jeu.nbPoints.toLocaleString('fr-FR') + ' points de charge' +
+      (international.ajoutees ? ' · dont ' +
+        international.ajoutees.toLocaleString('fr-FR') + ' hors de France' : '');
+  }
+
+  function majHorsFrance() {
+    var boite = $('#hors-france');
+    if (!boite) return;
+    var c = carte.centre;
+    var dehors = !dansZoneFrancaise(c.lat, c.lon);
+    boite.hidden = !dehors || international.etat === 'chargement';
+    if (dehors && international.ajoutees) {
+      $('#hors-france-texte').textContent = international.ajoutees.toLocaleString('fr-FR') +
+        ' bornes ajoutées depuis OpenStreetMap. Données contributives, ' +
+        'sans état temps réel : il n’existe qu’en France.';
+    } else if (dehors) {
+      $('#hors-france-texte').textContent = 'Hors de France, les bornes viennent ' +
+        'd’OpenStreetMap — contributives, sans état temps réel.';
+    }
+  }
+
+  /* Fait de la zone visible le point de référence de la recherche. */
+  function cadrerRechercheSurLaVue(bbox) {
+    var lat = (bbox[1] + bbox[3]) / 2;
+    var lon = (bbox[0] + bbox[2]) / 2;
+    var rayon = Math.max(3, Math.ceil(
+      B.distanceKm(bbox[1], bbox[0], bbox[3], bbox[2]) / 2));
+    etat.centre = { lat: lat, lon: lon, libelle: 'zone affichée' };
+    etat.rayon = Math.min(100, rayon);
+    $('#champ-rayon').value = etat.rayon;
+    $('#valeur-rayon').textContent = etat.rayon + ' km';
+    $('#bloc-rayon').hidden = false;
+    $('#autour-de').textContent = 'Autour de la zone affichée';
+    carte.marqueur = { lat: lat, lon: lon, rayonKm: etat.rayon };
+  }
+
+  function chargerInternational() {
+    if (international.etat === 'chargement') return;
+    var bbox = carte.emprise();
+    international.etat = 'chargement';
+    $('#btn-international').disabled = true;
+    $('#btn-international').textContent = 'Chargement…';
+
+    B.international.charger(bbox).then(function (res) {
+      international.etat = 'ok';
+      if (res.deja) {
+        bandeau('Cette zone a déjà été chargée.');
+      } else {
+        var n = jeu.ajouter(res.stations);
+        international.ajoutees += n;
+        rendreReseaux();
+        /* Sans point de référence, la liste resterait triée par puissance sur
+         * toute la France alors qu'on regarde l'étranger : on cale la recherche
+         * sur la zone qui vient d'être chargée. */
+        if (n) cadrerRechercheSurLaVue(bbox);
+        majCompteurTotal();
+        bandeau(n
+          ? n.toLocaleString('fr-FR') + ' bornes ajoutées depuis OpenStreetMap' +
+            (res.tronque ? ' (zone tronquée, rapprochez-vous pour tout voir)' : '') + '.'
+          : 'Aucune borne recensée dans cette zone sur OpenStreetMap.');
+        rafraichir();
+      }
+    }, function (e) {
+      international.etat = 'erreur';
+      bandeau('OpenStreetMap : ' + e.message + '.', true);
+    }).then(function () {
+      $('#btn-international').disabled = false;
+      $('#btn-international').textContent = 'Charger les bornes de cette zone';
+      majHorsFrance();
+    });
+  }
+
   /* --------------------------------------------------------- Fond de carte */
 
   var CLE_FOND = 'ou-recharger.fond';
@@ -281,6 +400,7 @@
         carte.definirFond(f.cle);
         memoriserFond(f.cle);
         rendreFonds();
+    majHorsFrance();
       });
       boite.appendChild(b);
     });
@@ -510,8 +630,12 @@
       ' aria-label="Coordonnées GPS de la station">' +
       '<button type="button" class="bouton" id="btn-copier-coords">Copier</button>' +
       '</div>' +
-      '<p class="fiche-note">Données déclaratives des opérateurs, consolidées par data.gouv.fr. ' +
-      (e && e.total
+      '<p class="fiche-note">' +
+      (jeu.estExterne(i) ? '' : 'Données déclaratives des opérateurs, consolidées par data.gouv.fr. ') +
+      (jeu.estExterne(i)
+        ? 'Station recensée sur OpenStreetMap (données contributives). Aucun état ' +
+          'temps réel n’est publié hors de France.'
+        : e && e.total
         ? 'L’état des bornes vient de ' + echapper(B.dispo.source.nom) + ', relevé ' +
           echapper(B.dispo.anciennete(e.maj)) + '.'
         : tempsReel.etat === 'ok'
@@ -1092,8 +1216,7 @@
 
   function demarrer() {
     jeu = new B.Jeu(global.SNAPSHOT_STATIONS);
-    $('#compteur-total').textContent = jeu.taille.toLocaleString('fr-FR') + ' stations · ' +
-      jeu.nbPoints.toLocaleString('fr-FR') + ' points de charge';
+    majCompteurTotal();
     $('#pied-source').textContent = jeu.source +
       ' — instantané embarqué, dernière mise à jour des données : ' +
       (jeu.majs.slice().sort().pop() || 'n.c.') + '.';
@@ -1115,6 +1238,7 @@
     }
     carte.redimensionner();
     rendreFonds();
+    majHorsFrance();
     B.carteCourante = carte;      // point d'entree pour les tests de bout en bout
 
     rendreChipsPuissance(); rendreChipsDispo(); rendreChipsPrises();
@@ -1126,8 +1250,13 @@
     geolocaliserAuDemarrage();
   }
 
-  /* Le flux est national : plus rien à recharger quand la carte bouge. */
-  function deplacementCarte() {}
+  /* Le flux d'état est national : rien à recharger quand la carte bouge. Reste
+   * à savoir si l'on vient de sortir du territoire couvert par le jeu IRVE. */
+  var minuteurDeplacement = null;
+  function deplacementCarte() {
+    clearTimeout(minuteurDeplacement);
+    minuteurDeplacement = setTimeout(majHorsFrance, 250);
+  }
 
   function brancherInterface() {
     var champ = $('#champ-lieu');
@@ -1175,6 +1304,7 @@
 
     $('#btn-geoloc').addEventListener('click', function () { geolocaliser(false); });
     $('#btn-temps-reel').addEventListener('click', function () { majTempsReel(); });
+    $('#btn-international').addEventListener('click', chargerInternational);
 
     $('#champ-rayon').addEventListener('input', function () {
       etat.rayon = +this.value;
