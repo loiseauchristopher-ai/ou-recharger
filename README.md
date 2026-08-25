@@ -141,6 +141,13 @@ Quand la charge ne suffit plus pour un trajet enregistré, l'app le dit avant le
 départ : « Avec 15 %, vous n'atteignez pas *travail* : 539 km pour 15 km
 d'autonomie utile. »
 
+Le niveau de charge se règle sur **une seule barre, épaisse**, qui sert à la
+fois de jauge et de commande : on touche où l'on veut, on glisse depuis
+n'importe quel point, et deux boutons encadrants ajustent par pas de cinq. Le
+curseur natif imposait d'attraper une pastille de quelques pixels sur une piste
+de quatre — impraticable au doigt. La zone tactile fait désormais 38 pixels de
+haut, celle des boutons 38 sur 38.
+
 Trois principes tirés des retours d'usage :
 
 - **La liste sous la carte tient en quatre stations**, puis « Afficher plus ».

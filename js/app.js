@@ -1382,10 +1382,20 @@
       '<div class="cockpit-haut">' +
       '<span class="cockpit-nom">' + echapper(actif.nom) + '</span>' +
       '<span class="cockpit-etat">' + km + ' km</span></div>' +
-      '<div class="cockpit-jauge' + classe + '"><span style="width:' + pourcent + '%"></span></div>' +
-      '<div class="cockpit-detail">Batterie à ' + pourcent + ' % — glissez pour corriger</div>' +
-      '<input type="range" id="cockpit-charge" min="5" max="100" step="1" value="' + pourcent + '"' +
-      ' aria-label="Niveau de batterie">' +
+      /* Une seule barre, épaisse, qui sert à la fois de jauge et de commande :
+       * on tape où l'on veut, on glisse depuis n'importe quel point. Le curseur
+       * natif imposait d'attraper une pastille de quelques pixels. */
+      '<div class="reglage-charge">' +
+      '<button type="button" class="pas" id="charge-moins" aria-label="Cinq pour cent de moins">−</button>' +
+      '<div class="jauge' + classe + '" id="jauge-charge" role="slider" tabindex="0"' +
+      ' aria-label="Niveau de batterie" aria-valuemin="5" aria-valuemax="100"' +
+      ' aria-valuenow="' + pourcent + '" aria-valuetext="' + pourcent + ' %">' +
+      '<span class="jauge-remplissage" style="width:' + pourcent + '%"></span>' +
+      '<span class="jauge-pastille" style="left:' + pourcent + '%"></span>' +
+      '</div>' +
+      '<button type="button" class="pas" id="charge-plus" aria-label="Cinq pour cent de plus">+</button>' +
+      '</div>' +
+      '<div class="cockpit-detail">Batterie à ' + pourcent + ' % — touchez la barre ou glissez</div>' +
       '<div class="cockpit-trajets">' +
       B.trajetsEnregistres.lire().map(function (t) {
         return '<button type="button" class="bulle-trajet" data-trajet="' + t.id + '">' +
@@ -1396,10 +1406,7 @@
       '</div>' +
       rendreAlerteAutonomie(actif, pourcent);
 
-    $('#cockpit-charge').addEventListener('input', function () {
-      definirEtatCharge(+this.value);
-      rendreCockpit();
-    });
+    brancherJaugeCharge();
     $('#cockpit-nouveau-trajet').addEventListener('click', function () {
       ouvrirPanneau('trajet');
     });
@@ -1429,6 +1436,88 @@
       '<strong>' + echapper(t.nom) + '</strong> : ' + Math.round(t.distance) +
       ' km pour ' + Math.round(portee) + ' km d’autonomie utile. ' +
       'Touchez le trajet pour voir où recharger.</div>';
+  }
+
+  /* Barre de charge tactile.
+   *
+   * On met à jour l'affichage en continu pendant le glissement, mais on ne
+   * redessine tout le cockpit qu'au relâchement : le redessiner à chaque
+   * mouvement détruirait la barre sous le doigt. */
+  function brancherJaugeCharge() {
+    var jauge = $('#jauge-charge');
+    if (!jauge) return;
+    var moins = $('#charge-moins');
+    var plus = $('#charge-plus');
+    var enCours = false;
+
+    function valeurDepuisX(clientX) {
+      var boite = jauge.getBoundingClientRect();
+      var part = (clientX - boite.left) / boite.width;
+      return Math.max(5, Math.min(100, Math.round(part * 100)));
+    }
+
+    function afficher(pourcent) {
+      jauge.querySelector('.jauge-remplissage').style.width = pourcent + '%';
+      jauge.querySelector('.jauge-pastille').style.left = pourcent + '%';
+      jauge.setAttribute('aria-valuenow', pourcent);
+      jauge.setAttribute('aria-valuetext', pourcent + ' %');
+      jauge.classList.toggle('faible', pourcent <= 30 && pourcent > 15);
+      jauge.classList.toggle('critique', pourcent <= 15);
+      var detail = jauge.closest('.cockpit').querySelector('.cockpit-detail');
+      var actif = B.parc.actif();
+      if (detail && actif) {
+        detail.textContent = 'Batterie à ' + pourcent + ' % — touchez la barre ou glissez';
+      }
+      var etat = jauge.closest('.cockpit').querySelector('.cockpit-etat');
+      if (etat && actif) {
+        etat.textContent = Math.round(actif.batterie * pourcent / 100 / actif.conso * 100) + ' km';
+      }
+    }
+
+    function appliquer(pourcent, definitif) {
+      afficher(pourcent);
+      if (definitif) {
+        definirEtatCharge(pourcent);
+        rendreCockpit();
+      }
+    }
+
+    jauge.addEventListener('pointerdown', function (ev) {
+      enCours = true;
+      jauge.setPointerCapture(ev.pointerId);
+      afficher(valeurDepuisX(ev.clientX));
+      ev.preventDefault();
+    });
+    jauge.addEventListener('pointermove', function (ev) {
+      if (enCours) afficher(valeurDepuisX(ev.clientX));
+    });
+    jauge.addEventListener('pointerup', function (ev) {
+      if (!enCours) return;
+      enCours = false;
+      appliquer(valeurDepuisX(ev.clientX), true);
+    });
+    jauge.addEventListener('pointercancel', function () { enCours = false; });
+
+    jauge.addEventListener('keydown', function (ev) {
+      var actuel = +jauge.getAttribute('aria-valuenow');
+      var pas = ev.key === 'PageUp' || ev.key === 'PageDown' ? 10 : 1;
+      if (ev.key === 'ArrowRight' || ev.key === 'ArrowUp' || ev.key === 'PageUp') {
+        appliquer(Math.min(100, actuel + pas), true);
+      } else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowDown' || ev.key === 'PageDown') {
+        appliquer(Math.max(5, actuel - pas), true);
+      } else if (ev.key === 'Home') { appliquer(5, true); }
+      else if (ev.key === 'End') { appliquer(100, true); }
+      else { return; }
+      ev.preventDefault();
+    });
+
+    /* Les boutons de part et d'autre visent le réglage fin, au doigt. */
+    moins.addEventListener('click', function () {
+      appliquer(Math.max(5, +jauge.getAttribute('aria-valuenow') - 5), true);
+    });
+    plus.addEventListener('click', function () {
+      appliquer(Math.min(100, +jauge.getAttribute('aria-valuenow') + 5), true);
+    });
   }
 
   /* L'état de charge est commun au cockpit et au planificateur. */
