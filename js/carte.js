@@ -30,8 +30,11 @@
     this.zoomMin = 4;
     this.zoomMax = 18;
     this.contours = [];
+    this.fond = global.Bornes.tuiles ? global.Bornes.tuiles.fondParCle('plan') : null;
+    this.cacheTuiles = global.Bornes.tuiles ? new global.Bornes.tuiles.Cache() : null;
     this.cibles = [];              // objets dessines, pour le test de clic
     this.marqueur = null;          // { lat, lon, rayonKm }
+    this.route = null;             // { points: [[lon, lat]...], etapes: [{lat, lon, rang}] }
     this.jeu = null;
     this.indices = null;
     this.couleurDe = null;
@@ -40,9 +43,44 @@
     this._brancherEvenements();
   }
 
+  /* Change le fond de carte. Renvoie le fond effectivement retenu. */
+  Carte.prototype.definirFond = function (cle) {
+    if (!global.Bornes.tuiles) return null;
+    this.fond = global.Bornes.tuiles.fondParCle(cle);
+    this.dessiner();
+    if (this.opts.surChangementFond) this.opts.surChangementFond(this.fond);
+    return this.fond;
+  };
+
   Carte.prototype.definirContours = function (traces) {
     this.contours = traces || [];
     this.dessiner();
+  };
+
+  /* Trace d'itineraire et arrets de recharge, dessines sous les stations. */
+  Carte.prototype.definirRoute = function (route) {
+    this.route = route;
+    this.dessiner();
+  };
+
+  /* Cadre la vue sur l'ensemble d'un trace. */
+  Carte.prototype.cadrerSur = function (points) {
+    if (!points || !points.length) return;
+    var latMin = 90, latMax = -90, lonMin = 180, lonMax = -180;
+    for (var i = 0; i < points.length; i++) {
+      var lon = points[i][0], lat = points[i][1];
+      if (lat < latMin) latMin = lat;
+      if (lat > latMax) latMax = lat;
+      if (lon < lonMin) lonMin = lon;
+      if (lon > lonMax) lonMax = lon;
+    }
+    var largeurDeg = Math.max(lonMax - lonMin, 0.01);
+    var hauteurDeg = Math.max(latEnY(latMin) - latEnY(latMax), 0.0001) * 360;
+    var zoomLon = Math.log2(this.largeur / (TAILLE_TUILE * (largeurDeg / 360)));
+    var zoomLat = Math.log2(this.hauteur / (TAILLE_TUILE * (hauteurDeg / 360)));
+    var zoom = Math.min(zoomLon, zoomLat) - 0.35;          // un peu de marge
+    this.centrerSur((latMin + latMax) / 2, (lonMin + lonMax) / 2,
+      Math.max(this.zoomMin, Math.min(this.zoomMax, zoom)));
   };
 
   Carte.prototype.definirDonnees = function (jeu, indices, couleurDe) {
@@ -227,11 +265,60 @@
     ctx.fillStyle = this._style('--carte-fond', '#eef2f6');
     ctx.fillRect(0, 0, L, H);
 
-    this._rendreContours(ctx);
+    var tuilesDessinees = this._rendreTuiles(ctx);
+    /* Le tracé des départements sert de fond de repli : inutile de le
+     * superposer aux tuiles, qui portent déjà les frontières. */
+    if (!tuilesDessinees) this._rendreContours(ctx);
     this._rendreRayon(ctx);
+    this._rendreRoute(ctx);
     this.cibles = [];
     this._rendreStations(ctx);
+    this._rendreArrets(ctx);
     this._rendreMarqueur(ctx);
+  };
+
+  /* Dessine les tuiles du fond courant. Renvoie true si au moins une tuile a
+   * ete peinte — sinon l'appelant retombe sur le trace des departements. */
+  Carte.prototype._rendreTuiles = function (ctx) {
+    var fond = this.fond;
+    if (!fond || !fond.url || !this.cacheTuiles) return false;
+    if (this.cacheTuiles.injoignable()) return false;
+
+    var z = Math.max(0, Math.min(fond.zoomMax, Math.round(this.zoom)));
+    var facteur = Math.pow(2, this.zoom - z);
+    var taille = TAILLE_TUILE * facteur;
+    var monde = Math.pow(2, z);
+
+    /* Coin haut-gauche de la vue, en coordonnees de tuile. */
+    var e = this.echelle();
+    var cx = lonEnX(this.centre.lon) * e, cy = latEnY(this.centre.lat) * e;
+    var gaucheMonde = (cx - this.largeur / 2) / e;
+    var hautMonde = (cy - this.hauteur / 2) / e;
+    var x0 = Math.floor(gaucheMonde * monde);
+    var y0 = Math.floor(hautMonde * monde);
+    var x1 = Math.floor((gaucheMonde + this.largeur / e) * monde);
+    var y1 = Math.floor((hautMonde + this.hauteur / e) * monde);
+
+    var self = this;
+    var redessiner = function () { self.dessiner(); };
+    var retine = (global.devicePixelRatio || 1) > 1.3;
+    var peintes = 0;
+
+    for (var y = y0; y <= y1; y++) {
+      if (y < 0 || y >= monde) continue;
+      for (var x = x0; x <= x1; x++) {
+        var tx = ((x % monde) + monde) % monde;          // la carte fait le tour
+        var img = this.cacheTuiles.obtenir(fond, z, tx, y, retine, redessiner);
+        if (!img) continue;
+        var px = (x / monde - gaucheMonde) * e;
+        var py = (y / monde - hautMonde) * e;
+        /* Un demi-pixel de recouvrement : sans lui, l'arrondi laisse des
+         * coutures claires entre les tuiles. */
+        ctx.drawImage(img, px, py, taille + 0.5, taille + 0.5);
+        peintes++;
+      }
+    }
+    return peintes > 0;
   };
 
   Carte.prototype._rendreContours = function (ctx) {
@@ -386,6 +473,52 @@
     var meilleur = 0;
     for (var i = 1; i < 4; i++) if (g.paliers[i] > g.paliers[meilleur]) meilleur = i;
     return paliers[meilleur].couleur;
+  };
+
+  Carte.prototype._rendreRoute = function (ctx) {
+    if (!this.route || !this.route.points || this.route.points.length < 2) return;
+    var e = this.echelle();
+    var cx = lonEnX(this.centre.lon) * e, cy = latEnY(this.centre.lat) * e;
+    var dx = this.largeur / 2 - cx, dy = this.hauteur / 2 - cy;
+    var points = this.route.points;
+
+    ctx.beginPath();
+    for (var i = 0; i < points.length; i++) {
+      var x = lonEnX(points[i][0]) * e + dx;
+      var y = latEnY(points[i][1]) * e + dy;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    /* Double trait : un liseré clair dessous pour rester lisible sur la carte. */
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.lineWidth = 8;
+    ctx.stroke();
+    ctx.strokeStyle = this._style('--carte-route', '#1f5fbf');
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  };
+
+  Carte.prototype._rendreArrets = function (ctx) {
+    if (!this.route || !this.route.etapes) return;
+    var police = this._style('--carte-police', 'system-ui, sans-serif');
+    for (var i = 0; i < this.route.etapes.length; i++) {
+      var etape = this.route.etapes[i];
+      var p = this.versEcran(etape.lat, etape.lon);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 13, 0, Math.PI * 2);
+      ctx.fillStyle = this._style('--carte-route', '#1f5fbf');
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '600 12px ' + police;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), p.x, p.y);
+      this.cibles.push({ x: p.x, y: p.y, r: 13, station: etape.station });
+    }
   };
 
   Carte.prototype._rendreMarqueur = function (ctx) {

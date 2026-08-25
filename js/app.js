@@ -255,6 +255,38 @@
       ' station' + pluriel + (points ? ' · ' + points.toLocaleString('fr-FR') + ' points de charge' : '');
   }
 
+  /* --------------------------------------------------------- Fond de carte */
+
+  var CLE_FOND = 'ou-recharger.fond';
+
+  function fondMemorise() {
+    try { return localStorage.getItem(CLE_FOND); } catch (e) { return null; }
+  }
+
+  function memoriserFond(cle) {
+    try { localStorage.setItem(CLE_FOND, cle); } catch (e) { /* navigation privée */ }
+  }
+
+  function rendreFonds() {
+    var boite = $('#fonds');
+    if (!boite || !B.tuiles) return;
+    var actuel = carte.fond ? carte.fond.cle : 'plan';
+    boite.innerHTML = '';
+    B.tuiles.FONDS.forEach(function (f) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = f.libelle;
+      b.setAttribute('aria-pressed', f.cle === actuel ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        carte.definirFond(f.cle);
+        memoriserFond(f.cle);
+        rendreFonds();
+      });
+      boite.appendChild(b);
+    });
+    $('#attribution').textContent = carte.fond ? carte.fond.attribution : '';
+  }
+
   function rendreLegende() {
     var tempsReelActif = tempsReel.parStation.size > 0;
     var lignes = tempsReelActif
@@ -760,6 +792,197 @@
     el.hidden = false;
   }
 
+
+  /* ------------------------------------------------------------ Trajet */
+
+  var trajet = { vehicule: null, plan: null, route: null, occupe: false };
+
+  function vehiculeCourant() {
+    var liste = B.vehicules.liste();
+    var choisi = liste[+$('#champ-vehicule').value] || liste[0];
+    /* La consommation est ajustable : c'est le paramètre qui décale le plus le
+     * résultat, et le seul que le conducteur connaisse vraiment. */
+    var conso = parseFloat($('#champ-conso').value);
+    return {
+      libelle: choisi.libelle,
+      batterie: choisi.batterie,
+      conso: isNaN(conso) ? choisi.conso : conso,
+      consoDefaut: choisi.conso,
+      charge: choisi.charge
+    };
+  }
+
+  function autonomieTheorique(v, pourcent) {
+    return Math.round(v.batterie * pourcent / 100 / v.conso * 100);
+  }
+
+  /* Stations utilisables pour un arrêt : assez puissantes pour que la pause
+   * reste raisonnable, et dotées d'une prise que la voiture accepte en rapide. */
+  function stationsUtilisables(v) {
+    var puissanceMin = Math.min(50, v.charge);
+    var rapide = v.charge >= 50;
+    var out = [];
+    for (var i = 0; i < jeu.taille; i++) {
+      if (jeu.kw(i) < puissanceMin) continue;
+      if (rapide && !(jeu.prise(i, B.PRISE.CCS) || jeu.prise(i, B.PRISE.CHADEMO))) continue;
+      out.push(i);
+    }
+    return out;
+  }
+
+  function lieuDepuisTexte(texte, secours) {
+    var q = (texte || '').trim();
+    if (!q) {
+      if (secours) return Promise.resolve(secours);
+      return Promise.reject(new Error('précisez un point de départ'));
+    }
+    var locales = suggestionsLocales(q);
+    if (locales.length) return Promise.resolve(locales[0]);
+    return suggestionsBan(q).then(function (ban) {
+      if (!ban.length) throw new Error('lieu introuvable : ' + q);
+      return ban[0];
+    });
+  }
+
+  function calculerTrajet() {
+    if (trajet.occupe) return;
+    var v = vehiculeCourant();
+    var chargeDepart = +$('#champ-batterie').value;
+    var reserve = +$('#champ-reserve').value;
+    var zone = $('#resultat-trajet');
+
+    trajet.occupe = true;
+    $('#btn-trajet').disabled = true;
+    zone.innerHTML = '<p class="aide">Calcul de l’itinéraire…</p>';
+
+    Promise.all([
+      lieuDepuisTexte($('#champ-depart').value, etat.centre),
+      lieuDepuisTexte($('#champ-arrivee').value)
+    ]).then(function (lieux) {
+      trajet.lieux = lieux;
+      return B.trajet.itineraire(lieux[0], lieux[1]);
+    }).then(function (route) {
+      var jalons = B.trajet.jalonner(route.points, 2);
+      var candidates = B.trajet.stationsSurLaRoute(
+        jeu, stationsUtilisables(v), jalons, 6);
+      var plan = B.trajet.planifier({
+        jeu: jeu, vehicule: v, jalons: jalons, candidates: candidates,
+        tempsReel: tempsReel.parStation, chargeDepart: chargeDepart, reserve: reserve
+      });
+      trajet.plan = plan;
+      trajet.route = route;
+      afficherTrajet(plan, route, v, candidates.length);
+    }).catch(function (e) {
+      zone.innerHTML = '<div class="trajet-erreur">' + echapper(e.message) +
+        (e.etapes && e.etapes.length
+          ? ' Les ' + e.etapes.length + ' premiers arrêts restent affichés.'
+          : '') + '</div>';
+      if (e.etapes && e.etapes.length && trajet.route) {
+        afficherEtapes(e.etapes, vehiculeCourant(), true);
+      }
+    }).then(function () {
+      trajet.occupe = false;
+      $('#btn-trajet').disabled = false;
+    });
+  }
+
+  function afficherTrajet(plan, route, v, nbCandidates) {
+    var zone = $('#resultat-trajet');
+    var minutes = plan.etapes.reduce(function (t, e) { return t + (e.minutes || 0); }, 0);
+    var resume = '<div class="trajet-resume">' +
+      '<strong>' + Math.round(plan.distance) + ' km</strong> · ' +
+      '<strong>' + formatDuree(route.duree) + '</strong> de route' +
+      (plan.etapes.length
+        ? ' · <strong>' + plan.etapes.length + '</strong> arrêt' +
+          (plan.etapes.length > 1 ? 's' : '') + ' (' + formatDuree(minutes) + ' de recharge)'
+        : ' · <strong>aucun arrêt nécessaire</strong>') +
+      '<br>Arrivée à <strong>' + Math.round(plan.chargeArrivee) + ' %</strong>' +
+      ' — autonomie au départ ' + Math.round(plan.autonomieDepart) + ' km.' +
+      '</div>';
+    zone.innerHTML = resume;
+    if (plan.etapes.length) afficherEtapes(plan.etapes, v, false);
+
+    carte.definirRoute({
+      points: route.points,
+      etapes: plan.etapes.map(function (e) {
+        return { lat: jeu.latitude(e.station), lon: jeu.longitude(e.station), station: e.station };
+      })
+    });
+    carte.cadrerSur(route.points);
+  }
+
+  function afficherEtapes(etapes, v, partiel) {
+    var zone = $('#resultat-trajet');
+    var html = '<ol class="etapes">' + etapes.map(function (e, rang) {
+      var i = e.station;
+      var d = disponibilite(i);
+      return '<li class="etape" data-i="' + i + '">' +
+        '<div class="etape-titre"><span>' + (rang + 1) + '. ' + echapper(jeu.libelle(i)) + '</span>' +
+        '<span class="chiffre">' + Math.round(e.km) + ' km</span></div>' +
+        '<div class="etape-detail">' + echapper(jeu.reseaux[jeu.reseau[i]]) + ' · ' +
+        formatKw(jeu.kw(i)) + ' · ' + jeu.points[i] + ' points' +
+        (e.detour > 0.4 ? ' · ' + e.detour.toFixed(1).replace('.', ',') + ' km d’écart' : '') +
+        '</div>' +
+        '<div class="etape-detail">Arrivée à ' + Math.round(e.chargeArrivee) + ' %, ' +
+        'repart à ' + Math.round(e.chargeDepart) + ' %' +
+        (e.minutes ? ' — environ ' + formatDuree(e.minutes) + ' de charge' : '') + '</div>' +
+        (d.genre !== 'horaires' && d.genre !== 'inconnu'
+          ? '<div class="etape-detail">' + echapper(d.texte) + '</div>' : '') +
+        '</li>';
+    }).join('') + '</ol>';
+    zone.insertAdjacentHTML('beforeend', html);
+
+    zone.querySelectorAll('.etape').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var i = +el.dataset.i;
+        ouvrirFiche(i);
+        carte.centrerSur(jeu.latitude(i), jeu.longitude(i), Math.max(carte.zoom, 12));
+      });
+    });
+  }
+
+  function formatDuree(minutes) {
+    var m = Math.round(minutes);
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60);
+    var reste = m % 60;
+    return h + ' h' + (reste ? ' ' + String(reste).padStart(2, '0') : '');
+  }
+
+  function majConso(reinitialiser) {
+    var liste = B.vehicules.liste();
+    var choisi = liste[+$('#champ-vehicule').value] || liste[0];
+    if (reinitialiser) $('#champ-conso').value = choisi.conso;
+    var conso = parseFloat($('#champ-conso').value);
+    $('#valeur-conso').textContent = conso.toString().replace('.', ',') + ' kWh/100 km';
+    $('#btn-conso-defaut').hidden = Math.abs(conso - choisi.conso) < 0.01;
+    var v = vehiculeCourant();
+    $('#valeur-batterie').textContent = $('#champ-batterie').value + ' % — ' +
+      autonomieTheorique(v, +$('#champ-batterie').value) + ' km';
+  }
+
+  function initTrajet() {
+    var select = $('#champ-vehicule');
+    select.innerHTML = B.vehicules.liste().map(function (v) {
+      return '<option value="' + v.id + '">' + echapper(v.libelle) + '</option>';
+    }).join('');
+    majConso(true);
+
+    $('#btn-replier-trajet').addEventListener('click', function () {
+      var corps = $('#corps-trajet');
+      corps.hidden = !corps.hidden;
+      this.setAttribute('aria-expanded', corps.hidden ? 'false' : 'true');
+    });
+    select.addEventListener('change', function () { majConso(true); });
+    $('#champ-conso').addEventListener('input', function () { majConso(false); });
+    $('#btn-conso-defaut').addEventListener('click', function () { majConso(true); });
+    $('#champ-batterie').addEventListener('input', function () { majConso(false); });
+    $('#champ-reserve').addEventListener('input', function () {
+      $('#valeur-reserve').textContent = this.value + ' %';
+    });
+    $('#btn-trajet').addEventListener('click', calculerTrajet);
+  }
+
   /* ------------------------------------------------------------- Construction */
 
   function chip(libelle, detail, actif, onClic, couleur) {
@@ -883,11 +1106,14 @@
       surDeplacement: deplacementCarte
     });
     carte.definirContours(global.FOND_CARTE || []);
+    carte.definirFond(fondMemorise() || 'plan');
     carte.redimensionner();
+    rendreFonds();
     B.carteCourante = carte;      // point d'entree pour les tests de bout en bout
 
     rendreChipsPuissance(); rendreChipsDispo(); rendreChipsPrises();
     rendreChipsServices(); rendreReseaux();
+    initTrajet();
     rafraichir();
     majBoutonTempsReel();
     $('#chargement').hidden = true;

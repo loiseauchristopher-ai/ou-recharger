@@ -46,6 +46,66 @@
       <button type="button" class="lien" id="btn-reinit">Réinitialiser les filtres</button>
     </div>
 
+    <section class="filtre trajet">
+      <h3>
+        <button type="button" class="replier" id="btn-replier-trajet" aria-expanded="false"
+                aria-controls="corps-trajet">Planifier un trajet</button>
+      </h3>
+      <div id="corps-trajet" hidden>
+        <label class="champ">
+          <span>Votre voiture</span>
+          <select id="champ-vehicule"></select>
+        </label>
+
+        <div class="champ" id="champ-conso-bloc">
+          <span>
+            <label for="champ-conso">Consommation</label>
+            <button type="button" class="lien" id="btn-conso-defaut" hidden>valeur par défaut</button>
+          </span>
+          <div class="rayon">
+            <input type="range" id="champ-conso" min="10" max="30" step="0.5">
+            <output id="valeur-conso"></output>
+          </div>
+        </div>
+
+        <div class="champ">
+          <label for="champ-batterie">Batterie au départ</label>
+          <div class="rayon">
+            <input type="range" id="champ-batterie" min="5" max="100" step="1" value="80">
+            <output id="valeur-batterie">80 %</output>
+          </div>
+        </div>
+
+        <div class="champ">
+          <label for="champ-reserve">Réserve à l’arrivée</label>
+          <div class="rayon">
+            <input type="range" id="champ-reserve" min="0" max="30" step="5" value="10">
+            <output id="valeur-reserve">10 %</output>
+          </div>
+        </div>
+
+        <label class="champ">
+          <span>Départ</span>
+          <input type="search" id="champ-depart" placeholder="Ville, adresse — ou ma position"
+                 autocomplete="off">
+        </label>
+        <label class="champ">
+          <span>Arrivée</span>
+          <input type="search" id="champ-arrivee" placeholder="Ville ou adresse" autocomplete="off">
+        </label>
+
+        <button type="button" class="bouton primaire pleine-largeur" id="btn-trajet">
+          Calculer les arrêts
+        </button>
+        <div id="resultat-trajet"></div>
+        <p class="aide">
+          Estimation : la consommation réelle dépend de la vitesse, du relief et de la
+          température — comptez 20 à 30 % de plus en hiver. Les arrêts s’arrêtent à 80 %,
+          au-delà la recharge devient trop lente pour valoir l’attente.
+        </p>
+      </div>
+    </section>
+
     <section class="filtre" id="bloc-rayon" hidden>
       <h3><label for="champ-rayon">Rayon de recherche</label></h3>
       <div class="rayon">
@@ -98,6 +158,8 @@
         <button type="button" class="bouton-carte" id="btn-zoom-moins" aria-label="Dézoomer">−</button>
         <button type="button" class="bouton-carte" id="btn-france" title="Voir toute la France">⌂</button>
       </div>
+      <div class="fonds" id="fonds" role="group" aria-label="Fond de carte"></div>
+      <p class="attribution" id="attribution"></p>
       <div class="legende" id="legende"></div>
       <div class="bandeau-carte" id="bandeau-carte" hidden></div>
     </div>
@@ -136,8 +198,11 @@
 <script src="donnees/fond-carte.js"></script>
 <script src="donnees/stations.js"></script>
 <script src="js/donnees.js"></script>
+<script src="js/tuiles.js"></script>
 <script src="js/horaires.js"></script>
+<script src="donnees/vehicules.js"></script>
 <script src="js/dispo.js"></script>
+<script src="js/trajet.js"></script>
 <script src="js/carte.js"></script>
 <script src="js/app.js"></script>
 </body>

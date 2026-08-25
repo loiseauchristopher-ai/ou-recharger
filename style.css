@@ -34,6 +34,7 @@
   --carte-marqueur: #16202e;
   --carte-rayon-fond: rgba(31, 95, 191, .07);
   --carte-rayon-trait: rgba(31, 95, 191, .55);
+  --carte-route: #1f5fbf;
   --carte-police: "Archivo", ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -59,6 +60,7 @@
     --carte-marqueur: #ffffff;
     --carte-rayon-fond: rgba(106, 166, 255, .10);
     --carte-rayon-trait: rgba(106, 166, 255, .6);
+    --carte-route: #6aa6ff;
   }
 }
 
@@ -83,6 +85,7 @@
   --carte-marqueur: #ffffff;
   --carte-rayon-fond: rgba(106, 166, 255, .10);
   --carte-rayon-trait: rgba(106, 166, 255, .6);
+  --carte-route: #6aa6ff;
 }
 
 * { box-sizing: border-box; }
@@ -246,6 +249,48 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
 .chip .puce { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .chip .chip-detail { font-size: 11px; opacity: .75; }
 
+/* ------------------------------------------------------------------ Trajet */
+
+.replier {
+  background: none; border: 0; padding: 0; margin: 0; width: 100%;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.replier::after { content: '▸'; font-size: 11px; transition: transform .15s ease; }
+.replier[aria-expanded="true"]::after { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .replier::after { transition: none; } }
+
+.champ { display: block; margin-bottom: 10px; }
+.champ > span, .champ > label {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  font-size: 12px; color: var(--texte-doux); margin-bottom: 4px;
+}
+.champ select, .champ input[type="search"] {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--trait);
+  border-radius: 8px; background: var(--surface-2); color: inherit;
+  font: inherit; font-size: 13px;
+}
+
+.etapes { list-style: none; margin: 12px 0 0; padding: 0; display: flex;
+  flex-direction: column; gap: 8px; }
+.etape {
+  border: 1px solid var(--trait); border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 8px 10px; font-size: 12.5px; cursor: pointer;
+}
+.etape:hover { background: var(--surface-2); }
+.etape-titre { font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+.etape-detail { color: var(--texte-doux); margin-top: 2px; }
+.etape .chiffre { font-family: var(--police-donnees); font-variant-numeric: tabular-nums; }
+.trajet-resume {
+  margin-top: 10px; padding: 10px; border-radius: 8px; background: var(--accent-doux);
+  font-size: 12.5px;
+}
+.trajet-resume strong { font-family: var(--police-donnees); }
+.trajet-erreur {
+  margin-top: 10px; padding: 10px; border-radius: 8px; font-size: 12.5px;
+  background: color-mix(in srgb, var(--hs) 12%, transparent); color: var(--hs);
+}
+
 .rayon { display: flex; align-items: center; gap: 10px; }
 .rayon input { flex: 1; accent-color: var(--accent); }
 .rayon output {
@@ -287,6 +332,25 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
 }
 .bouton-carte:hover { background: var(--surface-2); }
 
+.fonds {
+  position: absolute; top: 12px; left: 12px; display: flex; gap: 4px;
+  background: var(--surface); border: 1px solid var(--trait); border-radius: var(--rayon);
+  padding: 3px; box-shadow: var(--ombre);
+}
+.fonds button {
+  border: 0; background: none; color: var(--texte-doux); cursor: pointer;
+  font: inherit; font-size: 12px; padding: 5px 9px; border-radius: 7px;
+}
+.fonds button:hover { background: var(--surface-2); color: var(--texte); }
+.fonds button[aria-pressed="true"] { background: var(--accent); color: #fff; font-weight: 500; }
+
+.attribution {
+  position: absolute; right: 8px; bottom: 6px; margin: 0;
+  font-size: 10.5px; color: var(--texte-doux);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  padding: 2px 6px; border-radius: 5px; max-width: 60%; text-align: right;
+}
+
 .legende {
   position: absolute; left: 12px; bottom: 12px;
   background: var(--surface); border: 1px solid var(--trait); border-radius: var(--rayon);
@@ -299,7 +363,7 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
 .legende-bascule { display: none; }
 
 .bandeau-carte {
-  position: absolute; left: 12px; top: 12px; right: 60px;
+  position: absolute; left: 12px; top: 56px; right: 60px;
   background: var(--surface); border: 1px solid var(--trait); border-left: 3px solid var(--accent);
   border-radius: 8px; padding: 8px 11px; font-size: 12.5px; box-shadow: var(--ombre);
   max-height: 60%; overflow-y: auto;
@@ -443,7 +507,26 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
 }
 
 @media (max-width: 780px) {
-  .legende { max-width: 152px; padding: 6px 8px; font-size: 11px; }
+  .fonds {
+  position: absolute; top: 12px; left: 12px; display: flex; gap: 4px;
+  background: var(--surface); border: 1px solid var(--trait); border-radius: var(--rayon);
+  padding: 3px; box-shadow: var(--ombre);
+}
+.fonds button {
+  border: 0; background: none; color: var(--texte-doux); cursor: pointer;
+  font: inherit; font-size: 12px; padding: 5px 9px; border-radius: 7px;
+}
+.fonds button:hover { background: var(--surface-2); color: var(--texte); }
+.fonds button[aria-pressed="true"] { background: var(--accent); color: #fff; font-weight: 500; }
+
+.attribution {
+  position: absolute; right: 8px; bottom: 6px; margin: 0;
+  font-size: 10.5px; color: var(--texte-doux);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  padding: 2px 6px; border-radius: 5px; max-width: 60%; text-align: right;
+}
+
+.legende { max-width: 152px; padding: 6px 8px; font-size: 11px; }
   .legende .legende-ligne:not(:first-child) { display: none; }
   .legende:hover .legende-ligne, .legende:focus-within .legende-ligne { display: flex; }
   .legende.deployee .legende-ligne { display: flex; }

@@ -54,6 +54,57 @@ L'application distingue trois niveaux, et ne fait jamais passer l'un pour l'autr
    sans la pastille ni le code couleur du direct, et le filtre « Libres
    maintenant » l'exclut.
 
+## Fonds de carte
+
+Quatre fonds, choisis en haut à gauche de la carte et mémorisés d'une visite à
+l'autre :
+
+| Fond | Source | Utile pour |
+|---|---|---|
+| **Plan** | CARTO Voyager (OpenStreetMap) | se repérer dans les rues, trouver l'entrée d'un parking |
+| **Satellite** | Esri World Imagery | reconnaître les lieux, repérer un centre commercial |
+| **Relief** | OpenTopoMap | anticiper une côte, qui pèse sur la consommation |
+| **Sobre** | tracé local des départements | hors ligne, ou pour une carte sans bruit |
+
+Aucun ne demande de clé : ils sont utilisables tant que leur attribution est
+affichée, ce que fait la carte en bas à droite.
+
+Le rendu est maison — pas de bibliothèque cartographique. Les tuiles sont mises
+en cache en mémoire (400 au plus, la plus ancienne cédant la place), et si elles
+restent injoignables — hors ligne, ou dans un cadre qui bloque les requêtes —
+la carte retombe d'elle-même sur le tracé des départements. C'est ce repli qui
+permet à la page de rester utilisable partout.
+
+## Planifier un trajet
+
+Le planificateur répond à la question « est-ce que je passe, et où je m'arrête ».
+On choisit sa voiture, son niveau de batterie, un départ et une arrivée ; l'app
+demande la route à OSRM, la parcourt en tenant le niveau de charge, et place un
+arrêt dès que l'autonomie ne suffit plus pour atteindre la destination.
+
+**Choix des arrêts.** Seules les stations assez puissantes sont retenues (au
+moins 50 kW, ou la puissance de charge de la voiture si elle est inférieure) et
+dotées d'une prise que le véhicule accepte en charge rapide. Parmi elles, la
+note privilégie la puissance, puis l'état réellement libre quand il est connu,
+puis le faible détour ; s'arrêter tard plutôt que tôt est valorisé, cela réduit
+le nombre d'arrêts. La recharge s'arrête à 80 % — au-delà elle devient trop
+lente pour valoir l'attente — et le dernier arrêt ne fait le plein que du
+nécessaire pour arriver avec la réserve demandée.
+
+**Ce que le calcul ne sait pas.** C'est une estimation, pas une promesse :
+
+- la consommation dépend de la vitesse, du relief, du chargement et surtout de
+  la température (comptez 20 à 30 % de plus en hiver) — d'où le réglage manuel ;
+- la puissance de charge annoncée n'est presque jamais tenue tout du long : le
+  calcul retient 75 % de la puissance nominale, ce qui reste optimiste sur une
+  batterie déjà bien remplie ;
+- les caractéristiques des véhicules (`donnees/vehicules.js`, 64 modèles) sont
+  des ordres de grandeur, pas des données constructeur ;
+- une borne libre à la planification peut être occupée à l'arrivée.
+
+La réserve à l'arrivée, réglable et fixée à 10 % par défaut, absorbe une partie
+de ces écarts.
+
 ## Données
 
 Source : [fichier consolidé des bornes de recharge (IRVE)](https://www.data.gouv.fr/datasets/fichier-consolide-des-bornes-de-recharge-pour-vehicules-electriques/),
