@@ -145,10 +145,18 @@ n'a rien à voir avec le réglage de Safari. Le message d'erreur détecte le
 navigateur et indique le chemin correspondant, plutôt qu'un menu qui n'existe
 pas là où l'utilisateur regarde.
 
-**Votre voiture est mémorisée** — modèle, consommation ajustée et réserve — et
-l'état de charge se saisit indifféremment en pourcentage ou en kilomètres
-d'autonomie, puisque c'est ce que le tableau de bord affiche. Les deux entrées
-pilotent la même valeur.
+**Vos véhicules se règlent une fois pour toutes**, dans le panneau ⚙ Réglages :
+on choisit une marque, puis un modèle, on nomme le véhicule (« Ma voiture »,
+« Utilitaire »), on ajuste sa consommation réelle et sa réserve. Plusieurs
+véhicules peuvent coexister — voiture personnelle, second véhicule, flotte —
+l'un d'eux étant actif. Tout reste dans le navigateur : rien ne sort du
+téléphone.
+
+Le planificateur affiche simplement le véhicule actif et ses caractéristiques.
+L'état de charge s'y saisit indifféremment en pourcentage ou en **kilomètres
+d'autonomie**, puisque c'est ce que le tableau de bord affiche ; les deux
+entrées pilotent la même valeur, et la consommation corrigée est rendue au
+véhicule.
 
 **Lancer la navigation avec les arrêts.** Google Maps est le seul à accepter des
 étapes intermédiaires dans une URL, et neuf au maximum : le bouton principal

@@ -202,6 +202,7 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   font-size: 11px; padding: 1px 6px; font-weight: 600;
 }
 
+.acces-rapide { display: flex; gap: 8px; }
 .bascule-filtres { display: none; }
 
 /* ------------------------------------------------------------------ Grille */
@@ -479,6 +480,73 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
 
 .vide { text-align: center; color: var(--texte-doux); padding: 30px 10px; font-size: 14px; }
 
+/* ------------------------------------------------------------------ Modale */
+
+.modale { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; }
+.modale[hidden] { display: none; }
+.modale-fond { position: absolute; inset: 0; background: rgba(10, 18, 30, .55); }
+.modale-boite {
+  position: relative; background: var(--surface); border: 1px solid var(--trait);
+  border-radius: 14px; box-shadow: var(--ombre);
+  width: min(520px, calc(100vw - 24px)); max-height: min(84dvh, 720px);
+  display: flex; flex-direction: column;
+}
+.modale-entete {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--trait);
+}
+.modale-entete h2 { font-size: 16px; }
+.modale-corps { padding: 16px; overflow-y: auto; }
+
+/* Choix en deux temps : la marque, puis le modèle. */
+.grille-marques {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px;
+}
+.grille-marques button, .liste-modeles button {
+  border: 1px solid var(--trait); background: var(--surface-2); color: inherit;
+  border-radius: 9px; padding: 10px; font: inherit; font-size: 13px; cursor: pointer;
+  text-align: left;
+}
+.grille-marques button:hover, .liste-modeles button:hover {
+  border-color: var(--accent); background: var(--accent-doux);
+}
+.grille-marques .compte { display: block; font-size: 11px; color: var(--texte-doux); }
+.liste-modeles { display: flex; flex-direction: column; gap: 6px; }
+.liste-modeles .caracteristiques {
+  display: block; font-family: var(--police-donnees); font-size: 11px;
+  color: var(--texte-doux); margin-top: 2px;
+}
+
+.fil-ariane {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  font-size: 12.5px; color: var(--texte-doux);
+}
+
+.carte-vehicule {
+  border: 1px solid var(--trait); border-radius: var(--rayon); padding: 12px;
+  margin-bottom: 8px;
+}
+.carte-vehicule.actif { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-doux); }
+.carte-vehicule h3 { font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--texte); }
+.carte-vehicule .details {
+  font-family: var(--police-donnees); font-size: 11.5px; color: var(--texte-doux); margin-top: 3px;
+}
+.carte-vehicule .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.carte-vehicule .actions button { font-size: 12px; padding: 5px 10px; }
+.marque-actif {
+  display: inline-block; font-size: 11px; font-weight: 600; color: var(--accent);
+  background: var(--accent-doux); border-radius: 999px; padding: 2px 8px; margin-bottom: 6px;
+}
+
+.vehicule-actif {
+  border: 1px solid var(--trait); border-radius: 8px; padding: 8px 10px;
+  background: var(--surface-2); font-size: 13px;
+}
+.vehicule-actif .details {
+  font-family: var(--police-donnees); font-size: 11px; color: var(--texte-doux); margin-top: 2px;
+}
+.vehicule-absent { color: var(--texte-doux); font-size: 12.5px; }
+
 /* ------------------------------------------------------------------- Fiche */
 
 .fiche {
@@ -584,5 +652,6 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   .panneau-filtres.ouvert { transform: none; }
   .zone-carte { min-height: 42dvh; }
   .fiche { right: 0; left: 0; bottom: 0; width: auto; border-radius: 14px 14px 0 0; max-height: 78dvh; }
+  .modale-boite { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .panneau-filtres { transition: none; } }

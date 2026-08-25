@@ -960,25 +960,6 @@
 
   var trajet = { vehicule: null, plan: null, route: null, occupe: false };
 
-  function vehiculeCourant() {
-    var liste = B.vehicules.liste();
-    var choisi = liste[+$('#champ-vehicule').value] || liste[0];
-    /* La consommation est ajustable : c'est le paramètre qui décale le plus le
-     * résultat, et le seul que le conducteur connaisse vraiment. */
-    var conso = parseFloat($('#champ-conso').value);
-    return {
-      libelle: choisi.libelle,
-      batterie: choisi.batterie,
-      conso: isNaN(conso) ? choisi.conso : conso,
-      consoDefaut: choisi.conso,
-      charge: choisi.charge
-    };
-  }
-
-  function autonomieTheorique(v, pourcent) {
-    return Math.round(v.batterie * pourcent / 100 / v.conso * 100);
-  }
-
   /* Stations utilisables pour un arrêt : assez puissantes pour que la pause
    * reste raisonnable, et dotées d'une prise que la voiture accepte en rapide. */
   function stationsUtilisables(v) {
@@ -1010,6 +991,10 @@
   function calculerTrajet() {
     if (trajet.occupe) return;
     var v = vehiculeCourant();
+    if (!v) {
+      ouvrirParametres('marques');
+      return;
+    }
     var chargeDepart = +$('#champ-batterie').value;
     var reserve = +$('#champ-reserve').value;
     var zone = $('#resultat-trajet');
@@ -1172,46 +1157,242 @@
     return h + ' h' + (reste ? ' ' + String(reste).padStart(2, '0') : '');
   }
 
-  var CLE_VEHICULE = 'ou-recharger.vehicule';
+  /* ------------------------------------------------- Réglages du véhicule */
 
-  function memoriserVehicule() {
-    try {
-      localStorage.setItem(CLE_VEHICULE, JSON.stringify({
-        id: $('#champ-vehicule').value,
-        conso: $('#champ-conso').value,
-        reserve: $('#champ-reserve').value
-      }));
-    } catch (e) { /* navigation privée */ }
+  var parametres = { vue: 'liste', marque: null, edite: null };
+
+  function ouvrirParametres(vue) {
+    parametres.vue = vue || 'liste';
+    parametres.marque = null;
+    parametres.edite = null;
+    $('#modale-parametres').hidden = false;
+    rendreParametres();
   }
 
-  function restaurerVehicule() {
-    var enregistre = null;
-    try { enregistre = JSON.parse(localStorage.getItem(CLE_VEHICULE) || 'null'); } catch (e) {}
-    if (!enregistre) return false;
-    var liste = B.vehicules.liste();
-    if (liste[+enregistre.id]) $('#champ-vehicule').value = enregistre.id;
-    if (enregistre.conso) $('#champ-conso').value = enregistre.conso;
-    if (enregistre.reserve) {
-      $('#champ-reserve').value = enregistre.reserve;
-      $('#valeur-reserve').textContent = enregistre.reserve + ' %';
+  function fermerParametres() {
+    $('#modale-parametres').hidden = true;
+    majVehiculeActif();
+  }
+
+  function rendreParametres() {
+    var corps = $('#corps-parametres');
+    var titre = $('#titre-parametres');
+    if (parametres.vue === 'marques') {
+      titre.textContent = 'Choisir une marque';
+      corps.innerHTML = filAriane('Marque') +
+        '<div class="grille-marques">' + B.parc.marques().map(function (m, rang) {
+          return '<button type="button" data-marque="' + rang + '">' + echapper(m.nom) +
+            '<span class="compte">' + m.modeles.length + ' modèle' +
+            (m.modeles.length > 1 ? 's' : '') + '</span></button>';
+        }).join('') + '</div>';
+    } else if (parametres.vue === 'modeles') {
+      var marque = B.parc.marques()[parametres.marque];
+      titre.textContent = marque.nom;
+      corps.innerHTML = filAriane('Modèle', 'marques') +
+        '<div class="liste-modeles">' + marque.modeles.map(function (m) {
+          return '<button type="button" data-modele="' + m.id + '">' +
+            echapper(m.modele) +
+            '<span class="caracteristiques">' + m.batterie + ' kWh · ' + m.conso +
+            ' kWh/100 km · ' + m.charge + ' kW · ' +
+            Math.round(m.batterie / m.conso * 100) + ' km</span></button>';
+        }).join('') + '</div>';
+    } else if (parametres.vue === 'reglages') {
+      var modele = B.vehicules.liste()[parametres.edite.modele];
+      titre.textContent = modele.libelle;
+      corps.innerHTML = filAriane('Réglages', 'modeles') +
+        '<label class="champ"><span>Nom de ce véhicule</span>' +
+        '<input type="text" id="param-nom" maxlength="40" value="' +
+        echapper(parametres.edite.nom || modele.libelle) + '"></label>' +
+        '<div class="champ"><span><label for="param-conso">Consommation réelle</label>' +
+        '<span id="param-conso-valeur"></span></span>' +
+        '<div class="rayon"><input type="range" id="param-conso" min="10" max="30" step="0.5" value="' +
+        (parametres.edite.conso || modele.conso) + '"></div></div>' +
+        '<div class="champ"><span><label for="param-reserve">Réserve à l’arrivée</label>' +
+        '<span id="param-reserve-valeur"></span></span>' +
+        '<div class="rayon"><input type="range" id="param-reserve" min="0" max="30" step="5" value="' +
+        (parametres.edite.reserve != null ? parametres.edite.reserve : 10) + '"></div></div>' +
+        '<p class="aide">La consommation par défaut du modèle est ' + modele.conso +
+        ' kWh/100 km. Ajustez-la si vous connaissez la vôtre : c’est ce qui décale le ' +
+        'plus le calcul d’autonomie. Comptez 20 à 30 % de plus en hiver.</p>' +
+        '<button type="button" class="bouton primaire pleine-largeur" id="param-enregistrer">' +
+        (parametres.edite.id ? 'Enregistrer' : 'Ajouter ce véhicule') + '</button>';
+      majApercuReglages();
+    } else {
+      titre.textContent = 'Mes véhicules';
+      var parc = B.parc.lire();
+      corps.innerHTML = (parc.vehicules.length
+        ? parc.vehicules.map(function (v) { return carteVehicule(v, parc.actif); }).join('')
+        : '<p class="aide">Aucun véhicule enregistré. Ajoutez le vôtre : il sera ' +
+          'retrouvé à chaque visite, et le planificateur s’en servira pour calculer ' +
+          'votre autonomie et vos arrêts.</p>') +
+        '<button type="button" class="bouton primaire pleine-largeur" id="param-ajouter">' +
+        'Ajouter un véhicule</button>';
     }
-    return true;
+    brancherParametres();
+  }
+
+  function filAriane(etape, retourVers) {
+    return '<div class="fil-ariane">' +
+      '<button type="button" class="lien" data-retour="' + (retourVers || 'liste') + '">← Retour</button>' +
+      '<span>' + echapper(etape) + '</span></div>';
+  }
+
+  function carteVehicule(v, actif) {
+    var modele = B.vehicules.liste()[v.modele];
+    if (!modele) return '';
+    var conso = v.conso || modele.conso;
+    return '<div class="carte-vehicule' + (v.id === actif ? ' actif' : '') + '">' +
+      (v.id === actif ? '<span class="marque-actif">Véhicule utilisé</span>' : '') +
+      '<h3>' + echapper(v.nom) + '</h3>' +
+      '<div class="details">' + echapper(modele.libelle) + '</div>' +
+      '<div class="details">' + modele.batterie + ' kWh · ' + conso + ' kWh/100 km · ' +
+      modele.charge + ' kW · ' + Math.round(modele.batterie / conso * 100) + ' km à 100 %</div>' +
+      '<div class="actions">' +
+      (v.id === actif ? '' :
+        '<button type="button" class="bouton" data-activer="' + v.id + '">Utiliser</button>') +
+      '<button type="button" class="bouton" data-modifier="' + v.id + '">Modifier</button>' +
+      '<button type="button" class="bouton" data-supprimer="' + v.id + '">Supprimer</button>' +
+      '</div></div>';
+  }
+
+  function majApercuReglages() {
+    var conso = parseFloat($('#param-conso').value);
+    var modele = B.vehicules.liste()[parametres.edite.modele];
+    $('#param-conso-valeur').textContent = conso.toString().replace('.', ',') +
+      ' kWh/100 km — ' + Math.round(modele.batterie / conso * 100) + ' km';
+    $('#param-reserve-valeur').textContent = $('#param-reserve').value + ' %';
+  }
+
+  function brancherParametres() {
+    var corps = $('#corps-parametres');
+
+    corps.querySelectorAll('[data-retour]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        parametres.vue = this.dataset.retour;
+        rendreParametres();
+      });
+    });
+    corps.querySelectorAll('[data-marque]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        parametres.marque = +this.dataset.marque;
+        parametres.vue = 'modeles';
+        rendreParametres();
+      });
+    });
+    corps.querySelectorAll('[data-modele]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var modele = B.vehicules.liste()[+this.dataset.modele];
+        parametres.edite = { modele: +this.dataset.modele, nom: modele.libelle,
+                             conso: modele.conso, reserve: 10 };
+        parametres.vue = 'reglages';
+        rendreParametres();
+      });
+    });
+    corps.querySelectorAll('[data-activer]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        B.parc.activer(this.dataset.activer);
+        rendreParametres();
+      });
+    });
+    corps.querySelectorAll('[data-modifier]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = this.dataset.modifier;
+        B.parc.lire().vehicules.forEach(function (v) {
+          if (v.id === id) parametres.edite = JSON.parse(JSON.stringify(v));
+        });
+        parametres.vue = 'reglages';
+        rendreParametres();
+      });
+    });
+    corps.querySelectorAll('[data-supprimer]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        B.parc.supprimer(this.dataset.supprimer);
+        rendreParametres();
+      });
+    });
+
+    var ajouter = $('#param-ajouter');
+    if (ajouter) {
+      ajouter.addEventListener('click', function () {
+        parametres.vue = 'marques';
+        rendreParametres();
+      });
+    }
+
+    var conso = $('#param-conso');
+    if (conso) {
+      conso.addEventListener('input', majApercuReglages);
+      $('#param-reserve').addEventListener('input', majApercuReglages);
+      $('#param-enregistrer').addEventListener('click', function () {
+        var fiche = {
+          nom: $('#param-nom').value,
+          modele: parametres.edite.modele,
+          conso: parseFloat($('#param-conso').value),
+          reserve: parseInt($('#param-reserve').value, 10)
+        };
+        if (parametres.edite.id) B.parc.modifier(parametres.edite.id, fiche);
+        else B.parc.ajouter(fiche);
+        parametres.vue = 'liste';
+        rendreParametres();
+        majVehiculeActif();
+      });
+    }
+  }
+
+  /* ------------------------------------------- Le véhicule dans le trajet */
+
+  function vehiculeCourant() {
+    var v = B.parc.actif();
+    if (!v) return null;
+    var conso = parseFloat($('#champ-conso').value);
+    return {
+      libelle: v.nom, batterie: v.batterie,
+      conso: isFinite(conso) && conso > 0 ? conso : v.conso,
+      consoDefaut: v.consoDefaut, charge: v.charge
+    };
+  }
+
+  function autonomieTheorique(v, pourcent) {
+    return Math.round(v.batterie * pourcent / 100 / v.conso * 100);
+  }
+
+  function majVehiculeActif() {
+    var actif = B.parc.actif();
+    var boite = $('#vehicule-actif');
+    var prets = ['#champ-conso-bloc', '#btn-trajet'];
+
+    if (!actif) {
+      boite.innerHTML = '<span class="vehicule-absent">Aucun véhicule enregistré — ' +
+        'ajoutez le vôtre pour calculer vos arrêts.</span>';
+      prets.forEach(function (sel) { $(sel).style.display = 'none'; });
+      $('#btn-changer-vehicule').textContent = 'ajouter';
+      return;
+    }
+    prets.forEach(function (sel) { $(sel).style.display = ''; });
+    $('#btn-changer-vehicule').textContent = 'changer';
+
+    $('#champ-conso').value = actif.conso;
+    $('#champ-reserve').value = actif.reserve;
+    $('#valeur-reserve').textContent = actif.reserve + ' %';
+
+    boite.innerHTML = '<strong>' + echapper(actif.nom) + '</strong>' +
+      '<div class="details">' + actif.batterie + ' kWh · charge jusqu’à ' + actif.charge +
+      ' kW · ' + Math.round(actif.batterie / actif.conso * 100) + ' km à 100 %</div>';
+    majConso(false);
   }
 
   /* Le tableau de bord d'une voiture annonce des kilomètres, pas un
    * pourcentage : les deux saisies pilotent la même valeur. */
-  function majConso(reinitialiser, depuisKm) {
-    var liste = B.vehicules.liste();
-    var choisi = liste[+$('#champ-vehicule').value] || liste[0];
-    if (reinitialiser) $('#champ-conso').value = choisi.conso;
+  function majConso(depuisKm) {
+    var actif = B.parc.actif();
+    if (!actif) return;
     var conso = parseFloat($('#champ-conso').value);
-    if (!isFinite(conso) || conso <= 0) conso = choisi.conso;
+    if (!isFinite(conso) || conso <= 0) conso = actif.conso;
     $('#valeur-conso').textContent = conso.toString().replace('.', ',') + ' kWh/100 km';
-    $('#btn-conso-defaut').hidden = Math.abs(conso - choisi.conso) < 0.01;
+    $('#btn-conso-defaut').hidden = Math.abs(conso - actif.consoDefaut) < 0.01;
 
     var v = vehiculeCourant();
     var pourcent = +$('#champ-batterie').value;
-
     if (depuisKm) {
       var km = parseFloat($('#champ-autonomie').value);
       if (isFinite(km) && km >= 0) {
@@ -1221,37 +1402,39 @@
     } else {
       $('#champ-autonomie').value = autonomieTheorique(v, pourcent);
     }
-
     $('#valeur-batterie').textContent = pourcent + ' % — ' + autonomieTheorique(v, pourcent) + ' km';
-    $('#fiche-vehicule').textContent = choisi.batterie + ' kWh utiles · charge jusqu’à ' +
-      choisi.charge + ' kW · ' + autonomieTheorique(v, 100) + ' km à 100 %';
-    memoriserVehicule();
+    $('#fiche-vehicule').textContent = '';
+    /* La consommation ajustée appartient au véhicule : on la lui rend. */
+    B.parc.modifier(actif.id, { conso: conso, reserve: +$('#champ-reserve').value });
   }
 
   function initTrajet() {
-    var select = $('#champ-vehicule');
-    select.innerHTML = B.vehicules.liste().map(function (v) {
-      return '<option value="' + v.id + '">' + echapper(v.libelle) + '</option>';
-    }).join('');
-    /* Une voiture déjà choisie ne doit pas être redemandée à chaque visite. */
-    var restaure = restaurerVehicule();
-    majConso(!restaure);
+    majVehiculeActif();
 
     $('#btn-replier-trajet').addEventListener('click', function () {
       var corps = $('#corps-trajet');
       corps.hidden = !corps.hidden;
       this.setAttribute('aria-expanded', corps.hidden ? 'false' : 'true');
     });
-    select.addEventListener('change', function () { majConso(true); });
+    $('#btn-changer-vehicule').addEventListener('click', function () {
+      ouvrirParametres(B.parc.lire().vehicules.length ? 'liste' : 'marques');
+    });
     $('#champ-conso').addEventListener('input', function () { majConso(false); });
-    $('#btn-conso-defaut').addEventListener('click', function () { majConso(true); });
+    $('#btn-conso-defaut').addEventListener('click', function () {
+      var actif = B.parc.actif();
+      if (actif) { $('#champ-conso').value = actif.consoDefaut; majConso(false); }
+    });
     $('#champ-batterie').addEventListener('input', function () { majConso(false); });
-    $('#champ-autonomie').addEventListener('input', function () { majConso(false, true); });
+    $('#champ-autonomie').addEventListener('input', function () { majConso(true); });
     $('#champ-reserve').addEventListener('input', function () {
       $('#valeur-reserve').textContent = this.value + ' %';
-      memoriserVehicule();
+      majConso(false);
     });
     $('#btn-trajet').addEventListener('click', calculerTrajet);
+
+    $('#btn-parametres').addEventListener('click', function () { ouvrirParametres(); });
+    $('#btn-fermer-parametres').addEventListener('click', fermerParametres);
+    $('#fond-parametres').addEventListener('click', fermerParametres);
   }
 
   /* ------------------------------------------------------------- Construction */
@@ -1526,6 +1709,23 @@
       $('#bloc-rayon').hidden = true;
       carte.centrerSur(46.7, 2.5, 5.2);
       rafraichir();
+    });
+
+    /* Sur téléphone, le planificateur était enfoui sous deux replis : le tiroir
+     * des filtres, puis son propre repli. Un raccourci ouvre les deux d'un coup
+     * et l'amène à l'écran. */
+    $('#btn-ouvrir-trajet').addEventListener('click', function () {
+      var panneau = $('#panneau-filtres');
+      if (!panneau.classList.contains('ouvert')) {
+        panneau.classList.add('ouvert');
+        $('#btn-filtres').setAttribute('aria-expanded', 'true');
+      }
+      var corps = $('#corps-trajet');
+      if (corps.hidden) {
+        corps.hidden = false;
+        $('#btn-replier-trajet').setAttribute('aria-expanded', 'true');
+      }
+      $('#btn-replier-trajet').scrollIntoView({ block: 'start', behavior: 'smooth' });
     });
 
     $('#btn-filtres').addEventListener('click', function () {

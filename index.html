@@ -34,9 +34,18 @@
     <ul class="suggestions" id="suggestions" hidden></ul>
   </form>
 
-  <button type="button" class="bouton bascule-filtres" id="btn-filtres" aria-expanded="false">
-    Filtres <span class="pastille" id="pastille-filtres" hidden>0</span>
-  </button>
+  <div class="acces-rapide">
+    <button type="button" class="bouton" id="btn-ouvrir-trajet">
+      <span aria-hidden="true">🚗</span> Trajet
+    </button>
+    <button type="button" class="bouton" id="btn-parametres" aria-haspopup="dialog"
+            title="Mes véhicules et réglages">
+      <span aria-hidden="true">⚙</span><span class="texte-bouton"> Réglages</span>
+    </button>
+    <button type="button" class="bouton bascule-filtres" id="btn-filtres" aria-expanded="false">
+      Filtres <span class="pastille" id="pastille-filtres" hidden>0</span>
+    </button>
+  </div>
 </header>
 
 <main class="grille">
@@ -52,10 +61,13 @@
                 aria-controls="corps-trajet">Planifier un trajet</button>
       </h3>
       <div id="corps-trajet" hidden>
-        <label class="champ">
-          <span>Votre voiture</span>
-          <select id="champ-vehicule"></select>
-        </label>
+        <div class="champ" id="bloc-vehicule-actif">
+          <span>
+            Votre véhicule
+            <button type="button" class="lien" id="btn-changer-vehicule">changer</button>
+          </span>
+          <div class="vehicule-actif" id="vehicule-actif"></div>
+        </div>
 
         <div class="champ" id="champ-conso-bloc">
           <span>
@@ -202,6 +214,17 @@
   <div id="fiche-contenu"></div>
 </aside>
 
+<div class="modale" id="modale-parametres" hidden>
+  <div class="modale-fond" id="fond-parametres"></div>
+  <div class="modale-boite" role="dialog" aria-modal="true" aria-labelledby="titre-parametres">
+    <div class="modale-entete">
+      <h2 id="titre-parametres">Mes véhicules</h2>
+      <button type="button" class="fermer" id="btn-fermer-parametres" aria-label="Fermer">×</button>
+    </div>
+    <div class="modale-corps" id="corps-parametres"></div>
+  </div>
+</div>
+
 <footer class="pied">
   <p id="pied-source">Source : fichier consolidé des bornes de recharge (IRVE) — data.gouv.fr / Etalab, Licence Ouverte.</p>
 </footer>
@@ -214,6 +237,7 @@
 <script src="js/tuiles.js"></script>
 <script src="js/horaires.js"></script>
 <script src="donnees/vehicules.js"></script>
+<script src="js/parc.js"></script>
 <script src="js/dispo.js"></script>
 <script src="js/trajet.js"></script>
 <script src="js/international.js"></script>
