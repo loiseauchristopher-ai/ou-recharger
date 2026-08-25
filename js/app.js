@@ -52,7 +52,7 @@
     dispo: 'toutes',
     tri: 'distance',
     triForce: false,
-    limite: 25
+    limite: 4
   };
 
   var jeu = null;
@@ -241,7 +241,12 @@
         '</div></li>';
     }).join('');
 
-    $('#btn-plus').hidden = resultats.length <= etat.limite;
+    var restantes = resultats.length - etat.limite;
+    $('#btn-plus').hidden = restantes <= 0;
+    if (restantes > 0) {
+      $('#btn-plus').textContent = 'Afficher plus de stations (' +
+        restantes.toLocaleString('fr-FR') + ')';
+    }
     $('#message-vide').hidden = resultats.length > 0;
     if (!resultats.length) {
       $('#message-vide').textContent = etat.centre
@@ -453,10 +458,12 @@
     }
   }
 
-  function rafraichir(recadrer) {
+  function rafraichir(recadrer, garderLimite) {
+    if (!garderLimite) etat.limite = 4;
     ajusterTri();
     resultats = filtrer();
     rendreListe();
+    rendreCockpit();
     rendreLegende();
     majPastilleFiltres();
     var indices = new Uint32Array(resultats.length);
@@ -963,7 +970,9 @@
   /* Stations utilisables pour un arrêt : assez puissantes pour que la pause
    * reste raisonnable, et dotées d'une prise que la voiture accepte en rapide. */
   function stationsUtilisables(v) {
-    var puissanceMin = Math.min(50, v.charge);
+    /* Le choix du conducteur prime, borné par ce que la voiture sait encaisser. */
+    var souhaite = v.puissanceMin != null ? v.puissanceMin : 50;
+    var puissanceMin = Math.min(souhaite, v.charge);
     var rapide = v.charge >= 50;
     var out = [];
     for (var i = 0; i < jeu.taille; i++) {
@@ -1003,10 +1012,12 @@
     $('#btn-trajet').disabled = true;
     zone.innerHTML = '<p class="aide">Calcul de l’itinéraire…</p>';
 
-    Promise.all([
-      lieuDepuisTexte($('#champ-depart').value, etat.centre),
-      lieuDepuisTexte($('#champ-arrivee').value)
-    ]).then(function (lieux) {
+    var enregistre = arguments[0] && arguments[0].depart ? arguments[0] : null;
+    Promise.all(enregistre
+      ? [Promise.resolve(enregistre.depart), Promise.resolve(enregistre.arrivee)]
+      : [lieuDepuisTexte($('#champ-depart').value, etat.centre),
+         lieuDepuisTexte($('#champ-arrivee').value)]
+    ).then(function (lieux) {
       trajet.lieux = lieux;
       return B.trajet.itineraire(lieux[0], lieux[1]);
     }).then(function (route) {
@@ -1089,8 +1100,19 @@
       '<br>Arrivée à <strong>' + Math.round(plan.chargeArrivee) + ' %</strong>' +
       ' — autonomie au départ ' + Math.round(plan.autonomieDepart) + ' km.' +
       '</div>';
-    zone.innerHTML = resume + rendreNavigationTrajet(plan, trajet.lieux);
+    zone.innerHTML = resume + rendreNavigationTrajet(plan, trajet.lieux) +
+      '<div class="fiche-actions"><button type="button" class="bouton" id="btn-garder-trajet">' +
+      'Enregistrer ce trajet</button></div>';
     brancherLiensNavigation(zone);
+    $('#btn-garder-trajet').addEventListener('click', function () {
+      var nom = prompt('Nom de ce trajet (par exemple « travail » ou « maison ») :',
+        trajet.lieux[1].libelle);
+      if (nom === null) return;
+      B.trajetsEnregistres.enregistrer(nom, trajet.lieux[0], trajet.lieux[1], plan.distance);
+      this.textContent = 'Trajet enregistré';
+      this.disabled = true;
+      rendreCockpit();
+    });
     if (plan.etapes.length) afficherEtapes(plan.etapes, v, false);
 
     carte.definirRoute({
@@ -1157,22 +1179,185 @@
     return h + ' h' + (reste ? ' ' + String(reste).padStart(2, '0') : '');
   }
 
+  /* ---------------------------------------------------------- Cockpit */
+
+  /* L'écran d'accueil doit répondre à une seule question : « est-ce que je
+   * passe ? ». D'où l'état de charge en gros, et les trajets habituels à une
+   * touche — l'usage quotidien, pas la recherche exploratoire. */
+  function rendreCockpit() {
+    var boite = $('#cockpit');
+    var actif = B.parc.actif();
+
+    if (!actif) {
+      boite.innerHTML = '<div class="cockpit-haut"><span class="cockpit-nom">' +
+        'Aucun véhicule enregistré</span></div>' +
+        '<p class="cockpit-detail">Enregistrez le vôtre : l’application saura ' +
+        'alors si vous atteignez votre destination, et où vous arrêter sinon.</p>' +
+        '<div class="cockpit-trajets">' +
+        '<button type="button" class="bulle-trajet ajout" id="cockpit-ajouter-vehicule">' +
+        '＋ Ajouter mon véhicule</button></div>';
+      $('#cockpit-ajouter-vehicule').addEventListener('click', function () {
+        ouvrirParametres('marques');
+      });
+      return;
+    }
+
+    var pourcent = etatCharge();
+    var km = Math.round(actif.batterie * pourcent / 100 / actif.conso * 100);
+    var classe = pourcent <= 15 ? ' critique' : (pourcent <= 30 ? ' faible' : '');
+
+    boite.innerHTML =
+      '<div class="cockpit-haut">' +
+      '<span class="cockpit-nom">' + echapper(actif.nom) + '</span>' +
+      '<span class="cockpit-etat">' + km + ' km</span></div>' +
+      '<div class="cockpit-jauge' + classe + '"><span style="width:' + pourcent + '%"></span></div>' +
+      '<div class="cockpit-detail">Batterie à ' + pourcent + ' % — glissez pour corriger</div>' +
+      '<input type="range" id="cockpit-charge" min="5" max="100" step="1" value="' + pourcent + '"' +
+      ' aria-label="Niveau de batterie">' +
+      '<div class="cockpit-trajets">' +
+      B.trajetsEnregistres.lire().map(function (t) {
+        return '<button type="button" class="bulle-trajet" data-trajet="' + t.id + '">' +
+          echapper(t.nom) + '</button>';
+      }).join('') +
+      '<button type="button" class="bulle-trajet ajout" id="cockpit-nouveau-trajet">' +
+      '＋ Trajet</button>' +
+      '</div>' +
+      rendreAlerteAutonomie(actif, pourcent);
+
+    $('#cockpit-charge').addEventListener('input', function () {
+      definirEtatCharge(+this.value);
+      rendreCockpit();
+    });
+    $('#cockpit-nouveau-trajet').addEventListener('click', function () {
+      ouvrirPanneau('trajet');
+    });
+    boite.querySelectorAll('[data-trajet]').forEach(function (b) {
+      b.addEventListener('click', function () { lancerTrajetEnregistre(this.dataset.trajet); });
+    });
+  }
+
+  /* « Est-ce que j'arrive ? » — la question se pose avant de partir, pas une
+   * fois en route. Dès qu'un trajet habituel a une distance connue, on compare
+   * avec l'autonomie restante et on le dit. */
+  function rendreAlerteAutonomie(actif, pourcent) {
+    var portee = actif.batterie * Math.max(0, pourcent - actif.reserve) / 100 / actif.conso * 100;
+    var courts = B.trajetsEnregistres.lire().filter(function (t) { return t.distance > 0; });
+    if (!courts.length) return '';
+
+    var risques = courts.filter(function (t) { return t.distance > portee; });
+    if (!risques.length) {
+      var plusLong = courts.reduce(function (a, b) { return a.distance > b.distance ? a : b; });
+      return '<p class="cockpit-detail">Autonomie suffisante pour vos trajets ' +
+        'habituels (le plus long : ' + echapper(plusLong.nom) + ', ' +
+        Math.round(plusLong.distance) + ' km).</p>';
+    }
+    var t = risques[0];
+    return '<div class="cockpit-alerte">Avec ' + pourcent + ' %, vous n’atteignez pas ' +
+      '<strong>' + echapper(t.nom) + '</strong> : ' + Math.round(t.distance) +
+      ' km pour ' + Math.round(portee) + ' km d’autonomie utile. ' +
+      'Touchez le trajet pour voir où recharger.</div>';
+  }
+
+  /* L'état de charge est commun au cockpit et au planificateur. */
+  var CLE_CHARGE = 'ou-recharger.charge';
+
+  function etatCharge() {
+    var v = null;
+    try { v = parseInt(localStorage.getItem(CLE_CHARGE) || '', 10); } catch (e) {}
+    return isFinite(v) && v >= 5 && v <= 100 ? v : 80;
+  }
+
+  function definirEtatCharge(pourcent) {
+    try { localStorage.setItem(CLE_CHARGE, String(pourcent)); } catch (e) {}
+    var champ = $('#champ-batterie');
+    if (champ) { champ.value = pourcent; majConso(false); }
+  }
+
+  function lancerTrajetEnregistre(id) {
+    var trajetEnregistre = null;
+    B.trajetsEnregistres.lire().forEach(function (t) { if (t.id === id) trajetEnregistre = t; });
+    if (!trajetEnregistre) return;
+    ouvrirPanneau('trajet');
+    $('#champ-depart').value = trajetEnregistre.depart.libelle;
+    $('#champ-arrivee').value = trajetEnregistre.arrivee.libelle;
+    trajet.prefixe = trajetEnregistre;
+    calculerTrajet(trajetEnregistre);
+  }
+
+  /* --------------------------------------------------------- Panneaux */
+
+  /* Sur téléphone, un panneau recouvre l'écran : il doit toujours pouvoir se
+   * fermer. Trois sorties — la croix, le voile, la touche Échap — et une
+   * quatrième, la plus instinctive : le bouton retour du téléphone. Sans
+   * entrée d'historique, ce retour quittait purement et simplement la page. */
+  var panneauxOuverts = [];
+
+  function ouvrirPanneau(nom, avant) {
+    if (panneauxOuverts.indexOf(nom) >= 0) return;
+    if (avant) avant();
+    panneauxOuverts.push(nom);
+    appliquerPanneau(nom, true);
+    try {
+      history.pushState({ panneau: nom }, '');
+    } catch (e) { /* navigation privée stricte */ }
+  }
+
+  function fermerPanneau(nom, viaHistorique) {
+    var rang = panneauxOuverts.indexOf(nom);
+    if (rang < 0) return;
+    panneauxOuverts.splice(rang, 1);
+    appliquerPanneau(nom, false);
+    if (!viaHistorique) {
+      try { history.back(); } catch (e) {}
+    }
+  }
+
+  function appliquerPanneau(nom, ouvert) {
+    if (nom === 'filtres') {
+      $('#panneau-filtres').classList.toggle('ouvert', ouvert);
+      $('#voile-filtres').hidden = !ouvert;
+      $('#btn-filtres').setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+    } else if (nom === 'trajet') {
+      $('#modale-trajet').hidden = !ouvert;
+      if (ouvert) majVehiculeActif();
+    } else if (nom === 'parametres') {
+      $('#modale-parametres').hidden = !ouvert;
+      if (!ouvert) majVehiculeActif();
+    }
+  }
+
+  function fermerTousPanneaux() {
+    panneauxOuverts.slice().reverse().forEach(function (nom) {
+      appliquerPanneau(nom, false);
+    });
+    panneauxOuverts = [];
+  }
+
   /* ------------------------------------------------- Réglages du véhicule */
 
   var parametres = { vue: 'liste', marque: null, edite: null };
 
+  /* Puissance minimale retenue pour les arrêts d'un trajet. Une borne lente
+   * transforme une pause de vingt minutes en plusieurs heures. */
+  var PUISSANCES_PREF = [
+    { v: 0, libelle: 'Toutes' },
+    { v: 22, libelle: '≥ 22 kW' },
+    { v: 50, libelle: '≥ 50 kW' },
+    { v: 150, libelle: '≥ 150 kW' },
+    { v: 300, libelle: '≥ 300 kW' }
+  ];
+
   function ouvrirParametres(vue) {
-    parametres.vue = vue || 'liste';
-    parametres.marque = null;
-    parametres.edite = null;
-    $('#modale-parametres').hidden = false;
+    ouvrirPanneau('parametres', function () {
+      parametres.vue = vue || 'liste';
+      parametres.marque = null;
+      parametres.edite = null;
+      rendreParametres();
+    });
     rendreParametres();
   }
 
-  function fermerParametres() {
-    $('#modale-parametres').hidden = true;
-    majVehiculeActif();
-  }
+  function fermerParametres() { fermerPanneau('parametres'); }
 
   function rendreParametres() {
     var corps = $('#corps-parametres');
@@ -1211,6 +1396,17 @@
         '<span id="param-reserve-valeur"></span></span>' +
         '<div class="rayon"><input type="range" id="param-reserve" min="0" max="30" step="5" value="' +
         (parametres.edite.reserve != null ? parametres.edite.reserve : 10) + '"></div></div>' +
+        '<div class="champ"><span>Bornes à privilégier</span>' +
+        '<div class="chips" id="param-puissance">' +
+        PUISSANCES_PREF.map(function (p) {
+          var choisi = (parametres.edite.puissanceMin != null
+            ? parametres.edite.puissanceMin : 50) === p.v;
+          return '<button type="button" class="chip" data-puissance="' + p.v + '"' +
+            ' aria-pressed="' + (choisi ? 'true' : 'false') + '">' + p.libelle + '</button>';
+        }).join('') + '</div>' +
+        '<p class="aide">Sert au calcul des arrêts : une borne lente allonge la pause ' +
+        'de plusieurs heures. Les stations moins puissantes restent visibles sur la carte.</p>' +
+        '</div>' +
         '<p class="aide">La consommation par défaut du modèle est ' + modele.conso +
         ' kWh/100 km. Ajustez-la si vous connaissez la vôtre : c’est ce qui décale le ' +
         'plus le calcul d’autonomie. Comptez 20 à 30 % de plus en hiver.</p>' +
@@ -1319,6 +1515,16 @@
       });
     }
 
+    corps.querySelectorAll('[data-puissance]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        parametres.edite.puissanceMin = +this.dataset.puissance;
+        corps.querySelectorAll('[data-puissance]').forEach(function (autre) {
+          autre.setAttribute('aria-pressed',
+            +autre.dataset.puissance === parametres.edite.puissanceMin ? 'true' : 'false');
+        });
+      });
+    });
+
     var conso = $('#param-conso');
     if (conso) {
       conso.addEventListener('input', majApercuReglages);
@@ -1328,7 +1534,9 @@
           nom: $('#param-nom').value,
           modele: parametres.edite.modele,
           conso: parseFloat($('#param-conso').value),
-          reserve: parseInt($('#param-reserve').value, 10)
+          reserve: parseInt($('#param-reserve').value, 10),
+          puissanceMin: parametres.edite.puissanceMin != null
+            ? parametres.edite.puissanceMin : 50
         };
         if (parametres.edite.id) B.parc.modifier(parametres.edite.id, fiche);
         else B.parc.ajouter(fiche);
@@ -1348,7 +1556,8 @@
     return {
       libelle: v.nom, batterie: v.batterie,
       conso: isFinite(conso) && conso > 0 ? conso : v.conso,
-      consoDefaut: v.consoDefaut, charge: v.charge
+      consoDefaut: v.consoDefaut, charge: v.charge,
+      puissanceMin: v.puissanceMin
     };
   }
 
@@ -1379,6 +1588,7 @@
       '<div class="details">' + actif.batterie + ' kWh · charge jusqu’à ' + actif.charge +
       ' kW · ' + Math.round(actif.batterie / actif.conso * 100) + ' km à 100 %</div>';
     majConso(false);
+    rendreCockpit();
   }
 
   /* Le tableau de bord d'une voiture annonce des kilomètres, pas un
@@ -1409,13 +1619,9 @@
   }
 
   function initTrajet() {
+    $('#champ-batterie').value = etatCharge();
     majVehiculeActif();
 
-    $('#btn-replier-trajet').addEventListener('click', function () {
-      var corps = $('#corps-trajet');
-      corps.hidden = !corps.hidden;
-      this.setAttribute('aria-expanded', corps.hidden ? 'false' : 'true');
-    });
     $('#btn-changer-vehicule').addEventListener('click', function () {
       ouvrirParametres(B.parc.lire().vehicules.length ? 'liste' : 'marques');
     });
@@ -1424,7 +1630,11 @@
       var actif = B.parc.actif();
       if (actif) { $('#champ-conso').value = actif.consoDefaut; majConso(false); }
     });
-    $('#champ-batterie').addEventListener('input', function () { majConso(false); });
+    $('#champ-batterie').addEventListener('input', function () {
+      majConso(false);
+      try { localStorage.setItem(CLE_CHARGE, this.value); } catch (e) {}
+      rendreCockpit();
+    });
     $('#champ-autonomie').addEventListener('input', function () { majConso(true); });
     $('#champ-reserve').addEventListener('input', function () {
       $('#valeur-reserve').textContent = this.value + ' %';
@@ -1535,7 +1745,7 @@
     etat.reseaux.clear();
     etat.services.clear();
     etat.dispo = 'toutes';
-    etat.limite = 25;
+    etat.limite = 4;
     $('#champ-reseau').value = '';
     rendreChipsPuissance(); rendreChipsDispo(); rendreChipsPrises();
     rendreChipsServices(); rendreReseaux();
@@ -1668,7 +1878,7 @@
 
     $('#btn-reinit').addEventListener('click', reinitialiser);
     $('#btn-plus').addEventListener('click', function () {
-      etat.limite += 25;
+      etat.limite += 8;
       rendreListe();
     });
 
@@ -1689,7 +1899,10 @@
 
     $('#btn-fermer-fiche').addEventListener('click', fermerFiche);
     document.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape') fermerFiche();
+      if (ev.key !== 'Escape') return;
+      var dernier = panneauxOuverts[panneauxOuverts.length - 1];
+      if (dernier) fermerPanneau(dernier);
+      else fermerFiche();
     });
 
     $('#btn-zoom-plus').addEventListener('click', function () { carte.zoomer(1); });
@@ -1711,26 +1924,23 @@
       rafraichir();
     });
 
-    /* Sur téléphone, le planificateur était enfoui sous deux replis : le tiroir
-     * des filtres, puis son propre repli. Un raccourci ouvre les deux d'un coup
-     * et l'amène à l'écran. */
     $('#btn-ouvrir-trajet').addEventListener('click', function () {
-      var panneau = $('#panneau-filtres');
-      if (!panneau.classList.contains('ouvert')) {
-        panneau.classList.add('ouvert');
-        $('#btn-filtres').setAttribute('aria-expanded', 'true');
-      }
-      var corps = $('#corps-trajet');
-      if (corps.hidden) {
-        corps.hidden = false;
-        $('#btn-replier-trajet').setAttribute('aria-expanded', 'true');
-      }
-      $('#btn-replier-trajet').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      ouvrirPanneau('trajet');
     });
+    $('#btn-fermer-trajet').addEventListener('click', function () { fermerPanneau('trajet'); });
+    $('#fond-trajet').addEventListener('click', function () { fermerPanneau('trajet'); });
 
     $('#btn-filtres').addEventListener('click', function () {
-      var ouvert = $('#panneau-filtres').classList.toggle('ouvert');
-      this.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+      if (panneauxOuverts.indexOf('filtres') >= 0) fermerPanneau('filtres');
+      else ouvrirPanneau('filtres');
+    });
+    $('#btn-fermer-filtres').addEventListener('click', function () { fermerPanneau('filtres'); });
+    $('#voile-filtres').addEventListener('click', function () { fermerPanneau('filtres'); });
+
+    /* Le bouton retour du téléphone ferme le panneau du dessus. */
+    global.addEventListener('popstate', function () {
+      var dernier = panneauxOuverts[panneauxOuverts.length - 1];
+      if (dernier) fermerPanneau(dernier, true);
     });
 
     global.addEventListener('resize', function () { carte.redimensionner(); });

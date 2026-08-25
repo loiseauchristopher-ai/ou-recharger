@@ -225,7 +225,17 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   max-height: calc(100dvh - 56px);
 }
 
-.filtres-entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.filtres-entete {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 10px; margin-bottom: 12px; position: sticky; top: 0; z-index: 2;
+  background: var(--surface); padding-bottom: 8px;
+}
+.entete-actions { display: flex; align-items: center; gap: 8px; }
+/* La croix n'a d'utilité que lorsque le panneau recouvre l'écran. */
+.filtres-entete .fermer { display: none; position: static; }
+
+.voile { position: fixed; inset: 0; background: rgba(10, 18, 30, .45); z-index: 55; }
+.voile[hidden] { display: none; }
 
 .filtre { padding: 12px 0; border-top: 1px solid var(--trait); }
 .filtre:first-of-type { border-top: 0; padding-top: 0; }
@@ -425,6 +435,40 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   overflow-y: auto;
   max-height: calc(100dvh - 56px);
 }
+/* ---------------------------------------------------------------- Cockpit */
+
+.cockpit {
+  border: 1px solid var(--trait); border-radius: var(--rayon);
+  padding: 12px; margin-bottom: 12px; background: var(--surface);
+}
+.cockpit-haut { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.cockpit-nom { font-weight: 600; font-size: 14px; }
+.cockpit-etat {
+  font-family: var(--police-donnees); font-size: 18px; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.cockpit-jauge {
+  height: 8px; border-radius: 999px; background: var(--surface-2);
+  margin: 9px 0 4px; overflow: hidden;
+}
+.cockpit-jauge span { display: block; height: 100%; border-radius: 999px; background: var(--ok); }
+.cockpit-jauge.faible span { background: var(--occupe); }
+.cockpit-jauge.critique span { background: var(--hs); }
+.cockpit-detail { font-size: 12px; color: var(--texte-doux); }
+.cockpit input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: 6px; }
+.cockpit-trajets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.bulle-trajet {
+  border: 1px solid var(--trait); background: var(--surface-2); color: inherit;
+  border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.bulle-trajet:hover { border-color: var(--accent); background: var(--accent-doux); }
+.bulle-trajet.ajout { border-style: dashed; color: var(--texte-doux); }
+.cockpit-alerte {
+  margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px;
+  background: color-mix(in srgb, var(--occupe) 15%, transparent); color: var(--occupe);
+}
+
 .resultats-entete {
   display: flex; flex-wrap: wrap; justify-content: space-between;
   align-items: baseline; gap: 6px 12px; margin-bottom: 10px;
@@ -644,8 +688,9 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   .bascule-filtres { display: inline-flex; }
   .texte-bouton { display: none; }
   .grille { grid-template-columns: minmax(0, 1fr); grid-template-areas: "carte" "resultats"; }
+  .filtres-entete .fermer { display: block; }
   .panneau-filtres {
-    position: fixed; inset: 0 auto 0 0; width: min(320px, 88vw); z-index: 60;
+    position: fixed; inset: 0 auto 0 0; width: min(330px, 90vw); z-index: 60;
     transform: translateX(-100%); transition: transform .2s ease; max-height: 100dvh;
     box-shadow: var(--ombre);
   }

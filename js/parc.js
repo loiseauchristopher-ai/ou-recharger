@@ -62,7 +62,8 @@
       nom: (fiche.nom || '').trim(),
       modele: fiche.modele,
       conso: fiche.conso,
-      reserve: fiche.reserve != null ? fiche.reserve : 10
+      reserve: fiche.reserve != null ? fiche.reserve : 10,
+      puissanceMin: fiche.puissanceMin != null ? fiche.puissanceMin : 50
     };
     if (!vehicule.nom) {
       var m = global.Bornes.vehicules.liste()[fiche.modele];
@@ -115,7 +116,8 @@
       conso: enregistre.conso || modele.conso,
       consoDefaut: modele.conso,
       charge: modele.charge,
-      reserve: enregistre.reserve != null ? enregistre.reserve : 10
+      reserve: enregistre.reserve != null ? enregistre.reserve : 10,
+      puissanceMin: enregistre.puissanceMin != null ? enregistre.puissanceMin : 50
     };
   }
 

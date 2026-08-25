@@ -132,6 +132,31 @@ L'API Overpass est un service public souvent saturé : trois miroirs sont
 essayés tour à tour, et une zone trop vaste est refusée plutôt que de lancer une
 requête vouée à expirer.
 
+## Pensée pour le téléphone
+
+L'usage réel est mobile et quotidien : savoir si l'on passe, pas explorer un
+annuaire. L'écran d'accueil s'ouvre donc sur un **cockpit** — véhicule actif,
+autonomie restante en gros, jauge, et les trajets habituels en une touche.
+Quand la charge ne suffit plus pour un trajet enregistré, l'app le dit avant le
+départ : « Avec 15 %, vous n'atteignez pas *travail* : 539 km pour 15 km
+d'autonomie utile. »
+
+Trois principes tirés des retours d'usage :
+
+- **La liste sous la carte tient en quatre stations**, puis « Afficher plus ».
+  Vingt-cinq fiches à faire défiler n'aident personne sur un écran de téléphone.
+- **Un panneau qui recouvre l'écran doit toujours pouvoir se fermer** : croix,
+  voile, touche Échap, et surtout le bouton retour du téléphone — sans entrée
+  d'historique, ce retour quittait la page et faisait tout perdre.
+- **Trajet et filtres sont deux choses distinctes.** Planifier n'est pas
+  filtrer : le planificateur a son propre panneau, les filtres le leur.
+
+Les **trajets habituels** — « travail », « maison » — sont enregistrés avec leur
+distance, ce qui permet l'alerte sans recalcul. Chaque véhicule porte enfin sa
+**puissance de borne préférée** : sur une Model 3 réglée sur ≥ 150 kW,
+Toulouse–Lyon se fait en un seul arrêt de douze minutes, contre deux arrêts et
+quarante minutes sur une e-208 à ≥ 50 kW.
+
 ## Planifier un trajet
 
 Le planificateur répond à la question « est-ce que je passe, et où je m'arrête ».
