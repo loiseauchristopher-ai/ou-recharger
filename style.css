@@ -277,6 +277,18 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   font: inherit; font-size: 13px;
 }
 
+.autonomie {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; margin-top: 6px; font-size: 12px; color: var(--texte-doux);
+}
+.autonomie label { margin: 0; }
+.autonomie input {
+  width: 72px; padding: 5px 7px; border: 1px solid var(--trait); border-radius: 7px;
+  background: var(--surface-2); color: inherit;
+  font-family: var(--police-donnees); font-size: 13px; text-align: right;
+}
+#fiche-vehicule { font-family: var(--police-donnees); font-size: 11.5px; }
+
 .etapes { list-style: none; margin: 12px 0 0; padding: 0; display: flex;
   flex-direction: column; gap: 8px; }
 .etape {
@@ -287,6 +299,14 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
 .etape-titre { font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
 .etape-detail { color: var(--texte-doux); margin-top: 2px; }
 .etape .chiffre { font-family: var(--police-donnees); font-variant-numeric: tabular-nums; }
+.etape-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.lien-etape {
+  font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--trait); background: var(--surface-2);
+  color: var(--accent); text-decoration: none;
+}
+.lien-etape:hover { border-color: var(--accent); }
+
 .trajet-resume {
   margin-top: 10px; padding: 10px; border-radius: 8px; background: var(--accent-doux);
   font-size: 12.5px;

@@ -139,6 +139,17 @@ On choisit sa voiture, son niveau de batterie, un départ et une arrivée ; l'ap
 demande la route à OSRM, la parcourt en tenant le niveau de charge, et place un
 arrêt dès que l'autonomie ne suffit plus pour atteindre la destination.
 
+**Votre voiture est mémorisée** — modèle, consommation ajustée et réserve — et
+l'état de charge se saisit indifféremment en pourcentage ou en kilomètres
+d'autonomie, puisque c'est ce que le tableau de bord affiche. Les deux entrées
+pilotent la même valeur.
+
+**Lancer la navigation avec les arrêts.** Google Maps est le seul à accepter des
+étapes intermédiaires dans une URL, et neuf au maximum : le bouton principal
+ouvre donc l'itinéraire complet, arrêts compris. Waze et Plans ne prennent
+qu'une destination — ils emmènent au prochain arrêt, à relancer depuis la liste
+une fois sur place. Chaque étape porte ses propres liens.
+
 **Choix des arrêts.** Seules les stations assez puissantes sont retenues (au
 moins 50 kW, ou la puissance de charge de la voiture si elle est inférieure) et
 dotées d'une prise que le véhicule accepte en charge rapide. Parmi elles, la

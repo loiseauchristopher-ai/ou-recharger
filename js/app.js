@@ -747,8 +747,27 @@
     try { return window.self !== window.top; } catch (e) { return true; }
   }
 
+  function surIphone() {
+    var ua = navigator.userAgent || '';
+    return /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  /* Un refus est mémorisé par le navigateur : dire « autorisez-la » sans dire
+   * où se trouve le réglage ne sert à rien. Safari le range dans deux endroits
+   * différents selon qu'on veuille le changer pour ce site ou pour tous. */
+  function refusGeoloc() {
+    if (surIphone()) {
+      return 'Géolocalisation refusée pour ce site. Sur iPhone : touchez « aA » à ' +
+        'gauche de la barre d’adresse → Réglages du site web → Position → Autoriser. ' +
+        'Si l’option manque, allez dans Réglages → Safari → Position → Demander, ' +
+        'puis rechargez la page.';
+    }
+    return 'Géolocalisation refusée pour ce site. Rouvrez l’autorisation dans les ' +
+      'réglages du navigateur pour cette page, puis rechargez — ou saisissez une ville.';
+  }
+
   var MOTIFS_GEOLOC = {
-    1: 'Géolocalisation refusée. Autorisez-la dans votre navigateur, ou saisissez une ville ci-dessus.',
     2: 'Position indisponible pour le moment. Saisissez une ville ci-dessus.',
     3: 'La localisation a mis trop de temps à répondre. Saisissez une ville ci-dessus.'
   };
@@ -806,6 +825,8 @@
       var code = err && err.code;
       if (code === 1 && estEncadre()) {
         bandeau(REFUS_ENCADRE, true, { libelle: 'Ouvrir dans un onglet', action: ouvrirEnPleinEcran });
+      } else if (code === 1) {
+        bandeau(refusGeoloc(), true);
       } else {
         bandeau(MOTIFS_GEOLOC[code] || 'Position indisponible. Saisissez une ville ci-dessus.', true);
       }
@@ -1010,6 +1031,48 @@
     });
   }
 
+  /* Google Maps est le seul à accepter des étapes intermédiaires dans une URL,
+   * et neuf au maximum. Waze et Plans ne prennent qu'une destination : pour eux
+   * on navigue vers le prochain arrêt, puis on relance à l'arrivée. */
+  var WAYPOINTS_MAX = 9;
+
+  function lienGoogleAvecArrets(plan, lieux) {
+    var etapes = plan.etapes.slice(0, WAYPOINTS_MAX).map(function (e) {
+      return jeu.latitude(e.station) + ',' + jeu.longitude(e.station);
+    });
+    var url = 'https://www.google.com/maps/dir/?api=1&travelmode=driving' +
+      '&origin=' + lieux[0].lat + ',' + lieux[0].lon +
+      '&destination=' + lieux[1].lat + ',' + lieux[1].lon;
+    if (etapes.length) url += '&waypoints=' + etapes.join('|');
+    return url;
+  }
+
+  function rendreNavigationTrajet(plan, lieux) {
+    if (!plan.etapes.length) return '';
+    var premier = plan.etapes[0].station;
+    var applis = applisNavigation(jeu.latitude(premier), jeu.longitude(premier));
+    var versPremier = applis.filter(function (a) { return a.nom !== 'OpenStreetMap'; });
+
+    var tronque = plan.etapes.length > WAYPOINTS_MAX;
+    return '<p class="fiche-titre-actions">Lancer la navigation</p>' +
+      '<div class="fiche-actions">' +
+      '<a class="bouton primaire lien-navigation" target="_blank" rel="noopener" href="' +
+      lienGoogleAvecArrets(plan, lieux) + '">Google Maps · ' +
+      Math.min(plan.etapes.length, WAYPOINTS_MAX) + ' arrêt' +
+      (Math.min(plan.etapes.length, WAYPOINTS_MAX) > 1 ? 's' : '') + ' inclus</a>' +
+      versPremier.map(function (a) {
+        return '<a class="bouton lien-navigation" target="_blank" rel="noopener" href="' +
+          a.url + '">' + a.nom + ' · 1<sup>er</sup> arrêt</a>';
+      }).join('') +
+      '</div>' +
+      '<p class="aide">' +
+      (tronque ? 'Google Maps n’accepte que ' + WAYPOINTS_MAX + ' arrêts par itinéraire : ' +
+        'les suivants ne sont pas inclus. ' : '') +
+      'Waze et Plans ne gèrent qu’une destination à la fois : ils vous emmènent au ' +
+      'prochain arrêt, à relancer depuis la liste ci-dessous une fois sur place.' +
+      '</p>';
+  }
+
   function afficherTrajet(plan, route, v, nbCandidates) {
     var zone = $('#resultat-trajet');
     var minutes = plan.etapes.reduce(function (t, e) { return t + (e.minutes || 0); }, 0);
@@ -1023,7 +1086,8 @@
       '<br>Arrivée à <strong>' + Math.round(plan.chargeArrivee) + ' %</strong>' +
       ' — autonomie au départ ' + Math.round(plan.autonomieDepart) + ' km.' +
       '</div>';
-    zone.innerHTML = resume;
+    zone.innerHTML = resume + rendreNavigationTrajet(plan, trajet.lieux);
+    brancherLiensNavigation(zone);
     if (plan.etapes.length) afficherEtapes(plan.etapes, v, false);
 
     carte.definirRoute({
@@ -1033,6 +1097,12 @@
       })
     });
     carte.cadrerSur(route.points);
+  }
+
+  function brancherLiensNavigation(racine) {
+    Array.prototype.forEach.call(racine.querySelectorAll('.lien-navigation'), function (lien) {
+      lien.addEventListener('click', function (ev) { ouvrirNavigation(lien.href, ev); });
+    });
   }
 
   function afficherEtapes(etapes, v, partiel) {
@@ -1052,12 +1122,23 @@
         (e.minutes ? ' — environ ' + formatDuree(e.minutes) + ' de charge' : '') + '</div>' +
         (d.genre !== 'horaires' && d.genre !== 'inconnu'
           ? '<div class="etape-detail">' + echapper(d.texte) + '</div>' : '') +
+        '<div class="etape-actions">' +
+        applisNavigation(jeu.latitude(i), jeu.longitude(i))
+          .filter(function (a) { return a.nom !== 'OpenStreetMap'; })
+          .map(function (a) {
+            return '<a class="lien-etape lien-navigation" target="_blank" rel="noopener"' +
+              ' href="' + a.url + '">' + a.nom + '</a>';
+          }).join('') +
+        '</div>' +
         '</li>';
     }).join('') + '</ol>';
     zone.insertAdjacentHTML('beforeend', html);
 
+    brancherLiensNavigation(zone);
     zone.querySelectorAll('.etape').forEach(function (el) {
-      el.addEventListener('click', function () {
+      el.addEventListener('click', function (ev) {
+        /* Un lien de navigation dans l'étape ne doit pas aussi ouvrir la fiche. */
+        if (ev.target.closest('.lien-etape')) return;
         var i = +el.dataset.i;
         ouvrirFiche(i);
         carte.centrerSur(jeu.latitude(i), jeu.longitude(i), Math.max(carte.zoom, 12));
@@ -1073,16 +1154,60 @@
     return h + ' h' + (reste ? ' ' + String(reste).padStart(2, '0') : '');
   }
 
-  function majConso(reinitialiser) {
+  var CLE_VEHICULE = 'ou-recharger.vehicule';
+
+  function memoriserVehicule() {
+    try {
+      localStorage.setItem(CLE_VEHICULE, JSON.stringify({
+        id: $('#champ-vehicule').value,
+        conso: $('#champ-conso').value,
+        reserve: $('#champ-reserve').value
+      }));
+    } catch (e) { /* navigation privée */ }
+  }
+
+  function restaurerVehicule() {
+    var enregistre = null;
+    try { enregistre = JSON.parse(localStorage.getItem(CLE_VEHICULE) || 'null'); } catch (e) {}
+    if (!enregistre) return false;
+    var liste = B.vehicules.liste();
+    if (liste[+enregistre.id]) $('#champ-vehicule').value = enregistre.id;
+    if (enregistre.conso) $('#champ-conso').value = enregistre.conso;
+    if (enregistre.reserve) {
+      $('#champ-reserve').value = enregistre.reserve;
+      $('#valeur-reserve').textContent = enregistre.reserve + ' %';
+    }
+    return true;
+  }
+
+  /* Le tableau de bord d'une voiture annonce des kilomètres, pas un
+   * pourcentage : les deux saisies pilotent la même valeur. */
+  function majConso(reinitialiser, depuisKm) {
     var liste = B.vehicules.liste();
     var choisi = liste[+$('#champ-vehicule').value] || liste[0];
     if (reinitialiser) $('#champ-conso').value = choisi.conso;
     var conso = parseFloat($('#champ-conso').value);
+    if (!isFinite(conso) || conso <= 0) conso = choisi.conso;
     $('#valeur-conso').textContent = conso.toString().replace('.', ',') + ' kWh/100 km';
     $('#btn-conso-defaut').hidden = Math.abs(conso - choisi.conso) < 0.01;
+
     var v = vehiculeCourant();
-    $('#valeur-batterie').textContent = $('#champ-batterie').value + ' % — ' +
-      autonomieTheorique(v, +$('#champ-batterie').value) + ' km';
+    var pourcent = +$('#champ-batterie').value;
+
+    if (depuisKm) {
+      var km = parseFloat($('#champ-autonomie').value);
+      if (isFinite(km) && km >= 0) {
+        pourcent = Math.max(5, Math.min(100, Math.round(km * v.conso / v.batterie)));
+        $('#champ-batterie').value = pourcent;
+      }
+    } else {
+      $('#champ-autonomie').value = autonomieTheorique(v, pourcent);
+    }
+
+    $('#valeur-batterie').textContent = pourcent + ' % — ' + autonomieTheorique(v, pourcent) + ' km';
+    $('#fiche-vehicule').textContent = choisi.batterie + ' kWh utiles · charge jusqu’à ' +
+      choisi.charge + ' kW · ' + autonomieTheorique(v, 100) + ' km à 100 %';
+    memoriserVehicule();
   }
 
   function initTrajet() {
@@ -1090,7 +1215,9 @@
     select.innerHTML = B.vehicules.liste().map(function (v) {
       return '<option value="' + v.id + '">' + echapper(v.libelle) + '</option>';
     }).join('');
-    majConso(true);
+    /* Une voiture déjà choisie ne doit pas être redemandée à chaque visite. */
+    var restaure = restaurerVehicule();
+    majConso(!restaure);
 
     $('#btn-replier-trajet').addEventListener('click', function () {
       var corps = $('#corps-trajet');
@@ -1101,8 +1228,10 @@
     $('#champ-conso').addEventListener('input', function () { majConso(false); });
     $('#btn-conso-defaut').addEventListener('click', function () { majConso(true); });
     $('#champ-batterie').addEventListener('input', function () { majConso(false); });
+    $('#champ-autonomie').addEventListener('input', function () { majConso(false, true); });
     $('#champ-reserve').addEventListener('input', function () {
       $('#valeur-reserve').textContent = this.value + ' %';
+      memoriserVehicule();
     });
     $('#btn-trajet').addEventListener('click', calculerTrajet);
   }

@@ -74,6 +74,10 @@
             <input type="range" id="champ-batterie" min="5" max="100" step="1" value="80">
             <output id="valeur-batterie">80 %</output>
           </div>
+          <div class="autonomie">
+            <label for="champ-autonomie">ou l’autonomie affichée par la voiture</label>
+            <span><input type="number" id="champ-autonomie" min="0" max="1500" step="5"> km</span>
+          </div>
         </div>
 
         <div class="champ">
@@ -97,6 +101,7 @@
         <button type="button" class="bouton primaire pleine-largeur" id="btn-trajet">
           Calculer les arrêts
         </button>
+        <p class="aide" id="fiche-vehicule"></p>
         <div id="resultat-trajet"></div>
         <p class="aide">
           Estimation : la consommation réelle dépend de la vitesse, du relief et de la
