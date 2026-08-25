@@ -35,6 +35,8 @@
   --carte-rayon-fond: rgba(31, 95, 191, .07);
   --carte-rayon-trait: rgba(31, 95, 191, .55);
   --carte-route: #1f5fbf;
+  --carte-ciel-haut: #9dc0e4;
+  --carte-ciel-bas: #dfe7ef;
   --carte-police: "Archivo", ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -61,6 +63,8 @@
     --carte-rayon-fond: rgba(106, 166, 255, .10);
     --carte-rayon-trait: rgba(106, 166, 255, .6);
     --carte-route: #6aa6ff;
+    --carte-ciel-haut: #16283f;
+    --carte-ciel-bas: #0d1219;
   }
 }
 
@@ -86,6 +90,8 @@
   --carte-rayon-fond: rgba(106, 166, 255, .10);
   --carte-rayon-trait: rgba(106, 166, 255, .6);
   --carte-route: #6aa6ff;
+  --carte-ciel-haut: #16283f;
+  --carte-ciel-bas: #0d1219;
 }
 
 * { box-sizing: border-box; }
@@ -331,6 +337,8 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   box-shadow: var(--ombre); display: grid; place-items: center;
 }
 .bouton-carte:hover { background: var(--surface-2); }
+.bouton-carte[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+#btn-3d { font-size: 12px; font-weight: 600; }
 
 .fonds {
   position: absolute; top: 12px; left: 12px; display: flex; gap: 4px;

@@ -1107,6 +1107,12 @@
     });
     carte.definirContours(global.FOND_CARTE || []);
     carte.definirFond(fondMemorise() || 'plan');
+    var pitch = 0;
+    try { pitch = parseInt(localStorage.getItem('ou-recharger.pitch') || '0', 10) || 0; } catch (e) {}
+    if (pitch) {
+      carte.definirPitch(pitch);
+      $('#btn-3d').setAttribute('aria-pressed', 'true');
+    }
     carte.redimensionner();
     rendreFonds();
     B.carteCourante = carte;      // point d'entree pour les tests de bout en bout
@@ -1228,6 +1234,15 @@
 
     $('#btn-zoom-plus').addEventListener('click', function () { carte.zoomer(1); });
     $('#btn-zoom-moins').addEventListener('click', function () { carte.zoomer(-1); });
+    $('#btn-3d').addEventListener('click', function () {
+      /* Bascule franche entre vue à plat et vue inclinée : deux états lisibles
+       * valent mieux qu'un réglage continu qu'on ne saurait pas viser. */
+      var incline = carte.pitchDegres() > 0;
+      carte.definirPitch(incline ? 0 : 55);
+      this.setAttribute('aria-pressed', incline ? 'false' : 'true');
+      try { localStorage.setItem('ou-recharger.pitch', incline ? '0' : '55'); } catch (e) {}
+    });
+
     $('#btn-france').addEventListener('click', function () {
       etat.centre = null;
       carte.marqueur = null;

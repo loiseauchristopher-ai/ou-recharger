@@ -75,6 +75,34 @@ restent injoignables — hors ligne, ou dans un cadre qui bloque les requêtes �
 la carte retombe d'elle-même sur le tracé des départements. C'est ce repli qui
 permet à la page de rester utilisable partout.
 
+### Vue inclinée
+
+Le bouton **3D** bascule entre la vue du dessus et une vue inclinée à 55°, qui
+donne la profondeur : ce qui est loin devant rétrécit, ce qui est proche
+s'étale. Le choix est mémorisé.
+
+Le plan de la carte bascule autour de son axe horizontal médian :
+
+    z = d − dy·sin θ        profondeur du point
+    facteur = d / z         rétrécissement dû à la distance
+
+`d` est la distance focale, fixée à une fois la hauteur de la carte : plus
+courte, la perspective serait plus spectaculaire mais les tuiles proches
+paraîtraient étirées. La transformation est **analytiquement inversible**, ce
+qui garde le clic précis et le déplacement cohérent — un pixel d'écran ne
+représente pas la même distance en haut et en bas, le glissement repasse donc à
+plat avant de déplacer le centre.
+
+Une transformation affine ne sait pas produire un trapèze : chaque tuile est
+découpée en huit bandes horizontales, assez fines pour être traitées comme des
+parallélogrammes. Au-delà de l'horizon le plan passe derrière la caméra, un
+dégradé de ciel prend le relais, et le nombre de tuiles demandées est borné —
+une vue très inclinée porte sinon jusqu'à l'infini.
+
+Il ne s'agit pas de bâtiments en volume : ceux-là demandent des tuiles
+vectorielles, donc une clé d'API. C'est une mise en perspective du plan, comme
+les cartes routières avant l'arrivée du rendu vectoriel.
+
 ## Planifier un trajet
 
 Le planificateur répond à la question « est-ce que je passe, et où je m'arrête ».

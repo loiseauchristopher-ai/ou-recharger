@@ -27,6 +27,7 @@
     this.opts = options || {};
     this.centre = { lat: 46.7, lon: 2.5 };
     this.zoom = 5.2;
+    this.pitch = 0;                // inclinaison de la vue, en radians
     this.zoomMin = 4;
     this.zoomMax = 18;
     this.contours = [];
@@ -96,7 +97,63 @@
     return TAILLE_TUILE * Math.pow(2, this.zoom);
   };
 
-  Carte.prototype.versEcran = function (lat, lon) {
+  /* Vue inclinee.
+   *
+   * On part de la vue a plat, puis on bascule le plan de la carte autour de son
+   * axe horizontal median. Un point situe au-dessus du centre s'eloigne (il
+   * retrecit et remonte vers l'horizon), un point en dessous se rapproche.
+   *
+   *   z = d - dy·sin θ      profondeur du point
+   *   facteur = d / z       retrecissement du a la distance
+   *
+   * `d` est la distance focale : plus elle est grande, plus la perspective est
+   * douce. La transformation est analytiquement inversible, ce qui permet de
+   * garder un clic precis et un deplacement coherent. */
+  Carte.prototype.focale = function () {
+    /* Plus la focale est courte, plus la perspective est marquée — au prix
+     * d'une déformation. Autour d'une fois la hauteur, la profondeur se voit
+     * sans que les tuiles proches paraissent étirées. */
+    return this.hauteur * 1.0;
+  };
+
+  Carte.prototype._perspective = function (x, y) {
+    if (!this.pitch) return { x: x, y: y, facteur: 1 };
+    var cx = this.largeur / 2, cy = this.hauteur / 2;
+    var d = this.focale();
+    var dy = y - cy;
+    var z = d - dy * Math.sin(this.pitch);
+    if (z < 1) z = 1;                       // au-dela de l'horizon
+    var facteur = d / z;
+    return {
+      x: cx + (x - cx) * facteur,
+      y: cy + dy * Math.cos(this.pitch) * facteur,
+      facteur: facteur
+    };
+  };
+
+  Carte.prototype._inversePerspective = function (xe, ye) {
+    if (!this.pitch) return { x: xe, y: ye };
+    var cx = this.largeur / 2, cy = this.hauteur / 2;
+    var d = this.focale();
+    var Y = ye - cy;
+    var denominateur = d * Math.cos(this.pitch) + Y * Math.sin(this.pitch);
+    if (Math.abs(denominateur) < 1e-6) return { x: xe, y: -1e6 };
+    var dy = Y * d / denominateur;
+    var facteur = d / Math.max(1, d - dy * Math.sin(this.pitch));
+    return { x: cx + (xe - cx) / facteur, y: cy + dy };
+  };
+
+  /* Ordonnee de l'horizon : au-dela, le plan de la carte passe derriere la
+   * camera et il n'y a plus rien a dessiner. */
+  Carte.prototype.horizon = function () {
+    if (!this.pitch) return -Infinity;
+    var d = this.focale();
+    var cy = this.hauteur / 2;
+    return cy - (d * Math.cos(this.pitch)) / Math.sin(this.pitch) + 1;
+  };
+
+  /* Coordonnees « a plat », avant inclinaison. */
+  Carte.prototype._versPlat = function (lat, lon) {
     var e = this.echelle();
     var cx = lonEnX(this.centre.lon) * e, cy = latEnY(this.centre.lat) * e;
     return {
@@ -105,13 +162,33 @@
     };
   };
 
+  Carte.prototype.versEcran = function (lat, lon) {
+    var plat = this._versPlat(lat, lon);
+    return this._perspective(plat.x, plat.y);
+  };
+
   Carte.prototype.versGeo = function (px, py) {
+    var plat = this._inversePerspective(px, py);
     var e = this.echelle();
     var cx = lonEnX(this.centre.lon) * e, cy = latEnY(this.centre.lat) * e;
     return {
-      lon: xEnLon((px - this.largeur / 2 + cx) / e),
-      lat: yEnLat((py - this.hauteur / 2 + cy) / e)
+      lon: xEnLon((plat.x - this.largeur / 2 + cx) / e),
+      lat: yEnLat((plat.y - this.hauteur / 2 + cy) / e)
     };
+  };
+
+  /* Inclinaison, bornee : au-dela de 60° la carte se reduit a une bande floue
+   * pres de l'horizon, sans rien apporter. */
+  Carte.prototype.definirPitch = function (degres) {
+    var borne = Math.max(0, Math.min(60, degres));
+    this.pitch = borne * Math.PI / 180;
+    this.dessiner();
+    if (this.opts.surChangementPitch) this.opts.surChangementPitch(borne);
+    return borne;
+  };
+
+  Carte.prototype.pitchDegres = function () {
+    return Math.round(this.pitch * 180 / Math.PI);
   };
 
   /* Zone geographique visible : [lonMin, latMin, lonMax, latMax] */
@@ -156,8 +233,12 @@
     this.canvas.addEventListener('pointermove', function (ev) {
       var p = pos(ev);
       if (drag) {
-        var dx = p.x - drag.x, dy = p.y - drag.y;
-        if (Math.abs(dx) + Math.abs(dy) > 3) bouge = true;
+        if (Math.abs(p.x - drag.x) + Math.abs(p.y - drag.y) > 3) bouge = true;
+        /* En vue inclinée, un pixel d'écran ne vaut pas la même distance en
+         * haut et en bas : on repasse à plat avant de déplacer le centre. */
+        var avant = self._inversePerspective(drag.x, drag.y);
+        var apres = self._inversePerspective(p.x, p.y);
+        var dx = apres.x - avant.x, dy = apres.y - avant.y;
         var e = self.echelle();
         self.centre = {
           lat: yEnLat(latEnY(self.centre.lat) - dy / e),
@@ -265,6 +346,7 @@
     ctx.fillStyle = this._style('--carte-fond', '#eef2f6');
     ctx.fillRect(0, 0, L, H);
 
+    this._rendreCiel(ctx);
     var tuilesDessinees = this._rendreTuiles(ctx);
     /* Le tracé des départements sert de fond de repli : inutile de le
      * superposer aux tuiles, qui portent déjà les frontières. */
@@ -294,10 +376,22 @@
     var cx = lonEnX(this.centre.lon) * e, cy = latEnY(this.centre.lat) * e;
     var gaucheMonde = (cx - this.largeur / 2) / e;
     var hautMonde = (cy - this.hauteur / 2) / e;
-    var x0 = Math.floor(gaucheMonde * monde);
-    var y0 = Math.floor(hautMonde * monde);
-    var x1 = Math.floor((gaucheMonde + this.largeur / e) * monde);
-    var y1 = Math.floor((hautMonde + this.hauteur / e) * monde);
+
+    /* Inclinee, la vue porte bien plus loin que le rectangle de l'ecran : on
+     * borne la zone a couvrir par les quatre coins ramenes a plat. */
+    var plat = this._empriseAPlat();
+    var x0 = Math.floor((gaucheMonde + plat.gauche / e) * monde);
+    var y0 = Math.floor((hautMonde + plat.haut / e) * monde);
+    var x1 = Math.floor((gaucheMonde + plat.droite / e) * monde);
+    var y1 = Math.floor((hautMonde + plat.bas / e) * monde);
+
+    /* Garde-fou : une inclinaison forte peut demander des milliers de tuiles. */
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 900) {
+      var trop = new Error('zone trop vaste');
+      trop.benin = true;
+      x0 = Math.max(x0, Math.floor(gaucheMonde * monde) - 2);
+      y0 = Math.max(y0, Math.floor(hautMonde * monde) - 2);
+    }
 
     var self = this;
     var redessiner = function () { self.dessiner(); };
@@ -312,13 +406,94 @@
         if (!img) continue;
         var px = (x / monde - gaucheMonde) * e;
         var py = (y / monde - hautMonde) * e;
-        /* Un demi-pixel de recouvrement : sans lui, l'arrondi laisse des
-         * coutures claires entre les tuiles. */
-        ctx.drawImage(img, px, py, taille + 0.5, taille + 0.5);
-        peintes++;
+        if (this.pitch) {
+          if (this._tuileInclinee(ctx, img, px, py, taille)) peintes++;
+        } else {
+          /* Un demi-pixel de recouvrement : sans lui, l'arrondi laisse des
+           * coutures claires entre les tuiles. */
+          ctx.drawImage(img, px, py, taille + 0.5, taille + 0.5);
+          peintes++;
+        }
       }
     }
     return peintes > 0;
+  };
+
+  /* Au-dessus de l'horizon il n'y a plus de carte : un degrade evite d'y
+   * laisser la couleur de fond, qui ferait comme un bandeau vide. */
+  Carte.prototype._rendreCiel = function (ctx) {
+    if (!this.pitch) return;
+    var horizon = Math.min(this.hauteur, Math.max(0, this.horizon()));
+    if (horizon <= 0) return;
+    var degrade = ctx.createLinearGradient(0, 0, 0, horizon);
+    degrade.addColorStop(0, this._style('--carte-ciel-haut', '#9dc0e4'));
+    degrade.addColorStop(1, this._style('--carte-ciel-bas', '#dfe7ef'));
+    ctx.fillStyle = degrade;
+    ctx.fillRect(0, 0, this.largeur, horizon);
+  };
+
+  /* Emprise visible ramenee dans le repere « a plat », en pixels relatifs au
+   * coin haut-gauche de l'ecran. */
+  Carte.prototype._empriseAPlat = function () {
+    if (!this.pitch) {
+      return { gauche: 0, haut: 0, droite: this.largeur, bas: this.hauteur };
+    }
+    var limite = Math.max(0, this.horizon() + 2);
+    var coins = [
+      this._inversePerspective(0, limite),
+      this._inversePerspective(this.largeur, limite),
+      this._inversePerspective(0, this.hauteur),
+      this._inversePerspective(this.largeur, this.hauteur)
+    ];
+    var gauche = Infinity, droite = -Infinity, haut = Infinity, bas = -Infinity;
+    for (var i = 0; i < coins.length; i++) {
+      gauche = Math.min(gauche, coins[i].x); droite = Math.max(droite, coins[i].x);
+      haut = Math.min(haut, coins[i].y); bas = Math.max(bas, coins[i].y);
+    }
+    /* Une vue tres inclinee « voit » jusqu'a l'infini : on borne a dix ecrans. */
+    var plafond = this.hauteur * 10;
+    return {
+      gauche: Math.max(gauche, -plafond), droite: Math.min(droite, this.largeur + plafond),
+      haut: Math.max(haut, -plafond), bas: Math.min(bas, this.hauteur + plafond)
+    };
+  };
+
+  /* Dessine une tuile sur le plan incline. Une transformation affine ne sait
+   * pas produire un trapeze : on decoupe la tuile en bandes horizontales,
+   * chacune assez fine pour etre traitee comme un parallelogramme. */
+  Carte.prototype._tuileInclinee = function (ctx, img, px, py, taille) {
+    var BANDES = 8;
+    var source = img.naturalWidth || TAILLE_TUILE;
+    var horizon = this.horizon();
+    var peinte = false;
+
+    for (var b = 0; b < BANDES; b++) {
+      var v0 = b / BANDES, v1 = (b + 1) / BANDES;
+      var yHaut = py + v0 * taille;
+      var yBas = py + v1 * taille;
+      if (yBas <= horizon) continue;                 // bande passee derriere l'horizon
+
+      var hg = this._perspective(px, yHaut);
+      var hd = this._perspective(px + taille, yHaut);
+      var bg = this._perspective(px, yBas);
+      if (!isFinite(hg.x) || !isFinite(bg.y)) continue;
+      if (Math.max(hg.y, bg.y) < -this.hauteur || Math.min(hg.y, bg.y) > this.hauteur * 2) continue;
+
+      var hauteurSource = source / BANDES;
+      var ax = (hd.x - hg.x) / source;
+      var ay = (hd.y - hg.y) / source;
+      var bx = (bg.x - hg.x) / hauteurSource;
+      var by = (bg.y - hg.y) / hauteurSource;
+
+      ctx.save();
+      ctx.transform(ax, ay, bx, by, hg.x - bx * (v0 * source), hg.y - by * (v0 * source));
+      /* Un peu de recouvrement vertical pour masquer les coutures entre bandes. */
+      ctx.drawImage(img, 0, v0 * source, source, hauteurSource + 1,
+                    0, v0 * source, source, hauteurSource + 1);
+      ctx.restore();
+      peinte = true;
+    }
+    return peinte;
   };
 
   Carte.prototype._rendreContours = function (ctx) {
@@ -330,9 +505,8 @@
     for (var t = 0; t < this.contours.length; t++) {
       var trace = this.contours[t];
       for (var i = 0; i < trace.length; i++) {
-        var x = lonEnX(trace[i][0]) * e + dx;
-        var y = latEnY(trace[i][1]) * e + dy;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        var p = this._perspective(lonEnX(trace[i][0]) * e + dx, latEnY(trace[i][1]) * e + dy);
+        if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
       }
       ctx.closePath();
     }
@@ -376,9 +550,10 @@
 
     for (var k = 0; k < idx.length; k++) {
       var s = idx[k];
-      var x = lonEnX(jeu.lon[s] / 1e5) * e + dx;
+      var brut = this._perspective(lonEnX(jeu.lon[s] / 1e5) * e + dx,
+                                   latEnY(jeu.lat[s] / 1e5) * e + dy);
+      var x = brut.x, y = brut.y;
       if (x < -marge || x > this.largeur + marge) continue;
-      var y = latEnY(jeu.lat[s] / 1e5) * e + dy;
       if (y < -marge || y > this.hauteur + marge) continue;
 
       var ci = Math.floor(x / cellule), cj = Math.floor(y / cellule);
@@ -484,9 +659,8 @@
 
     ctx.beginPath();
     for (var i = 0; i < points.length; i++) {
-      var x = lonEnX(points[i][0]) * e + dx;
-      var y = latEnY(points[i][1]) * e + dy;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      var p = this._perspective(lonEnX(points[i][0]) * e + dx, latEnY(points[i][1]) * e + dy);
+      if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
     }
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
