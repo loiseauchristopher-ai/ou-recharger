@@ -139,6 +139,12 @@ On choisit sa voiture, son niveau de batterie, un départ et une arrivée ; l'ap
 demande la route à OSRM, la parcourt en tenant le niveau de charge, et place un
 arrêt dès que l'autonomie ne suffit plus pour atteindre la destination.
 
+**Géolocalisation refusée ?** Sur iOS, chaque navigateur demande sa propre
+autorisation système, rangée sous son nom dans Réglages : refuser dans Chrome
+n'a rien à voir avec le réglage de Safari. Le message d'erreur détecte le
+navigateur et indique le chemin correspondant, plutôt qu'un menu qui n'existe
+pas là où l'utilisateur regarde.
+
 **Votre voiture est mémorisée** — modèle, consommation ajustée et réserve — et
 l'état de charge se saisit indifféremment en pourcentage ou en kilomètres
 d'autonomie, puisque c'est ce que le tableau de bord affiche. Les deux entrées

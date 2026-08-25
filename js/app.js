@@ -753,18 +753,36 @@
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   }
 
+  /* Sur iOS, tous les navigateurs s'appuient sur WebKit mais chacun demande sa
+   * propre autorisation système, rangée sous son propre nom dans Réglages.
+   * Refuser dans Chrome n'a donc rien à voir avec le réglage de Safari — et
+   * renvoyer vers le mauvais menu ne mène nulle part. */
+  function navigateurIOS() {
+    var ua = navigator.userAgent || '';
+    if (/CriOS/.test(ua)) return 'Chrome';
+    if (/FxiOS/.test(ua)) return 'Firefox';
+    if (/EdgiOS/.test(ua)) return 'Edge';
+    if (/OPiOS|OPT\//.test(ua)) return 'Opera';
+    return 'Safari';
+  }
+
   /* Un refus est mémorisé par le navigateur : dire « autorisez-la » sans dire
-   * où se trouve le réglage ne sert à rien. Safari le range dans deux endroits
-   * différents selon qu'on veuille le changer pour ce site ou pour tous. */
+   * où se trouve le réglage ne sert à rien. */
   function refusGeoloc() {
-    if (surIphone()) {
-      return 'Géolocalisation refusée pour ce site. Sur iPhone : touchez « aA » à ' +
-        'gauche de la barre d’adresse → Réglages du site web → Position → Autoriser. ' +
-        'Si l’option manque, allez dans Réglages → Safari → Position → Demander, ' +
-        'puis rechargez la page.';
+    if (!surIphone()) {
+      return 'Géolocalisation refusée pour ce site. Rouvrez l’autorisation dans les ' +
+        'réglages du navigateur pour cette page, puis rechargez — ou saisissez une ville.';
     }
-    return 'Géolocalisation refusée pour ce site. Rouvrez l’autorisation dans les ' +
-      'réglages du navigateur pour cette page, puis rechargez — ou saisissez une ville.';
+    var appli = navigateurIOS();
+    if (appli === 'Safari') {
+      return 'Géolocalisation refusée pour ce site. Touchez « aA » à gauche de la ' +
+        'barre d’adresse → Réglages du site web → Position → Autoriser. Si l’option ' +
+        'manque : Réglages → Safari → Position → Demander, puis rechargez la page.';
+    }
+    return 'Géolocalisation refusée. Sur iPhone, ' + appli + ' a sa propre ' +
+      'autorisation, séparée de celle de Safari : ouvrez Réglages → ' + appli +
+      ' → Position et choisissez « Lorsque l’app est active », puis rechargez cette ' +
+      'page. Vérifiez ensuite l’autorisation du site dans le menu de ' + appli + '.';
   }
 
   var MOTIFS_GEOLOC = {
