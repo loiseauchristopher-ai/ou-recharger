@@ -1022,7 +1022,9 @@
            * un numéro et une rue. */
           afficher(ban.concat(locales.filter(function (s) {
             return !connus[B.sansAccent(s.libelle)];
-          })).slice(0, 7));
+          /* Cinq lignes au plus : la liste pousse le bouton de calcul vers le
+           * bas, et un écran de téléphone n'en montre pas beaucoup plus. */
+          })).slice(0, 5));
         });
       }, 250);
     });
@@ -1033,6 +1035,22 @@
       dernierChoix = liste._propositions[+li.dataset.k];
       champ.value = dernierChoix.libelle;
       liste.hidden = true;
+    });
+
+    /* La liste recouvre ce qui suit, dont le bouton de calcul : elle doit se
+     * fermer au premier contact ailleurs, sans attendre le blur — sur mobile,
+     * le toucher destiné au bouton était sinon avalé par la liste. */
+    document.addEventListener('pointerdown', function (ev) {
+      if (liste.hidden) return;
+      if (ev.target === champ || liste.contains(ev.target)) return;
+      liste.hidden = true;
+    });
+
+    champ.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && !liste.hidden) {
+        liste.hidden = true;
+        ev.stopPropagation();
+      }
     });
 
     champ.addEventListener('blur', function () {
@@ -1219,16 +1237,76 @@
     return date.getHours() + ' h ' + String(date.getMinutes()).padStart(2, '0');
   }
 
+  /* Une arrivée le lendemain doit le dire : « 2 h 15 » seul induirait en erreur. */
+  function formatHeureAvecJour(date, reference) {
+    var jour = new Date(date), base = new Date(reference);
+    jour.setHours(0, 0, 0, 0); base.setHours(0, 0, 0, 0);
+    if (jour.getTime() === base.getTime()) return formatHeure(date);
+    return formatHeure(date) + ' ' + nomDuJour(date);
+  }
+
+  /* Au-delà de trois jours, l'heure d'arrivée n'apprend plus rien : on s'arrête
+   * là plutôt que d'ouvrir un calendrier complet. */
+  var JOURS_DEPART = [
+    { decalage: 0, libelle: 'Aujourd’hui' },
+    { decalage: 1, libelle: 'Demain' },
+    { decalage: 2, libelle: 'Après-demain' }
+  ];
+  var jourDepart = 0;
+
   function heureDepart() {
     var champ = $('#champ-heure');
     var maintenant = new Date();
-    if (!champ || !champ.value) return maintenant;
-    var bouts = champ.value.split(':');
     var depart = new Date(maintenant);
+    depart.setDate(depart.getDate() + jourDepart);
+
+    if (!champ || !champ.value) {
+      /* Sans heure, on part maintenant — ou au matin pour un autre jour. */
+      if (jourDepart === 0) return maintenant;
+      depart.setHours(8, 0, 0, 0);
+      return depart;
+    }
+    var bouts = champ.value.split(':');
     depart.setHours(+bouts[0], +bouts[1], 0, 0);
-    /* Une heure déjà passée désigne le lendemain. */
-    if (depart < maintenant - 60000) depart.setDate(depart.getDate() + 1);
+    /* Une heure déjà passée aujourd'hui ne peut pas être une heure de départ. */
+    if (jourDepart === 0 && depart < maintenant - 60000) return maintenant;
     return depart;
+  }
+
+  function nomDuJour(date) {
+    var aujourdhui = new Date();
+    aujourdhui.setHours(0, 0, 0, 0);
+    var jour = new Date(date);
+    jour.setHours(0, 0, 0, 0);
+    var ecart = Math.round((jour - aujourdhui) / 86400000);
+    if (ecart === 0) return 'aujourd’hui';
+    if (ecart === 1) return 'demain';
+    if (ecart === 2) return 'après-demain';
+    return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+
+  function rendreJoursDepart() {
+    var boite = $('#chips-jour');
+    if (!boite) return;
+    boite.innerHTML = '';
+    JOURS_DEPART.forEach(function (j) {
+      boite.appendChild(chip(j.libelle, '', jourDepart === j.decalage, function () {
+        jourDepart = j.decalage;
+        rendreJoursDepart();
+      }));
+    });
+    majResumeDepart();
+  }
+
+  function majResumeDepart() {
+    var resume = $('#resume-depart');
+    if (!resume) return;
+    var depart = heureDepart();
+    var champ = $('#champ-heure');
+    var immediat = jourDepart === 0 && (!champ || !champ.value);
+    resume.textContent = immediat
+      ? 'Départ maintenant, à ' + formatHeure(depart) + '.'
+      : 'Départ ' + nomDuJour(depart) + ' à ' + formatHeure(depart) + '.';
   }
 
   function afficherTrajet(plan, route, v, nbCandidates) {
@@ -1239,14 +1317,14 @@
     trajet.heures = heures;
 
     var resume = '<div class="trajet-resume">' +
-      '<div class="resume-arrivee">Arrivée vers <strong>' + formatHeure(heures.arrivee) +
-      '</strong></div>' +
+      '<div class="resume-arrivee">Arrivée vers <strong>' +
+      formatHeureAvecJour(heures.arrivee, depart) + '</strong></div>' +
       '<div>' + Math.round(plan.distance) + ' km · ' + formatDuree(route.duree) + ' de route' +
       (plan.etapes.length
         ? ' · ' + plan.etapes.length + ' arrêt' + (plan.etapes.length > 1 ? 's' : '') +
           ' (' + formatDuree(minutes) + ' de recharge)'
         : ' · aucun arrêt nécessaire') + '</div>' +
-      '<div>Départ ' + formatHeure(depart) + ' · arrivée à ' +
+      '<div>Départ ' + nomDuJour(depart) + ' à ' + formatHeure(depart) + ' · arrivée à ' +
       Math.round(plan.chargeArrivee) + ' % de batterie</div>' +
       '<div class="resume-reserve">Heures estimées sans tenir compte du trafic — ' +
       'Waze les ajustera en route.</div>' +
@@ -1266,7 +1344,7 @@
       this.disabled = true;
       rendreCockpit();
     });
-    if (plan.etapes.length) afficherEtapes(plan.etapes, v, false, heures);
+    if (plan.etapes.length) afficherEtapes(plan.etapes, v, false, heures, depart);
 
     carte.definirRoute({
       points: route.points,
@@ -1283,8 +1361,9 @@
     });
   }
 
-  function afficherEtapes(etapes, v, partiel, heures) {
+  function afficherEtapes(etapes, v, partiel, heures, departTrajet) {
     var zone = $('#resultat-trajet');
+    departTrajet = departTrajet || new Date();
     var html = '<ol class="etapes">' + etapes.map(function (e, rang) {
       var i = e.station;
       var d = disponibilite(i);
@@ -1297,8 +1376,8 @@
         '</div>' +
         '<div class="etape-detail">' +
         (heures && heures.etapes[rang]
-          ? '<strong>' + formatHeure(heures.etapes[rang].arrivee) + '</strong> → repart ' +
-            formatHeure(heures.etapes[rang].reprise) + ' · '
+          ? '<strong>' + formatHeureAvecJour(heures.etapes[rang].arrivee, departTrajet) +
+            '</strong> → repart ' + formatHeure(heures.etapes[rang].reprise) + ' · '
           : '') +
         Math.round(e.chargeArrivee) + ' % en arrivant, ' +
         Math.round(e.chargeDepart) + ' % au départ' +
@@ -1985,6 +2064,8 @@
       $('#valeur-reserve').textContent = this.value + ' %';
       majConso(false);
     });
+    rendreJoursDepart();
+    $('#champ-heure').addEventListener('input', majResumeDepart);
     lieuDepart = brancherSuggestions('#champ-depart', '#suggestions-depart');
     lieuArrivee = brancherSuggestions('#champ-arrivee', '#suggestions-arrivee');
     $('#btn-trajet').addEventListener('click', calculerTrajet);

@@ -196,6 +196,12 @@ ligne, la Base Adresse Nationale ajoute le numéro et la rue. Une proposition
 retenue est déjà localisée — la renvoyer au géocodage risquerait de tomber sur
 un autre lieu du même nom.
 
+**Jour de départ.** Aujourd'hui, demain ou après-demain — au-delà, l'heure
+d'arrivée n'apprend plus rien et un calendrier complet ne ferait qu'encombrer.
+Sans heure saisie, on part maintenant pour aujourd'hui, à 8 h pour un autre
+jour ; une heure déjà passée aujourd'hui ramène à maintenant. Une arrivée qui
+franchit minuit porte son jour : « arrivée vers 3 h 20 demain ».
+
 **Heures d'arrivée.** Waze n'affiche pas l'arrivée finale quand on ne lui donne
 que le prochain arrêt : c'est à l'application de la calculer. La durée de route
 est répartie au prorata de la distance, les recharges s'y ajoutent, et chaque

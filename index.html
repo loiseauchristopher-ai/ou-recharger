@@ -216,11 +216,13 @@
         </div>
 
         <div class="champ">
-          <label for="champ-heure">Heure de départ</label>
+          <span>Départ</span>
+          <div class="chips" id="chips-jour" role="group" aria-label="Jour de départ"></div>
           <div class="autonomie">
-            <span>Laissez vide pour partir maintenant</span>
+            <label for="champ-heure">Heure</label>
             <span><input type="time" id="champ-heure"></span>
           </div>
+          <p class="aide" id="resume-depart"></p>
         </div>
 
         <button type="button" class="bouton primaire pleine-largeur" id="btn-trajet">

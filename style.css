@@ -303,7 +303,11 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
 }
 @keyframes pulse { 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .micro.ecoute { animation: none; } }
-.champ-lieu .suggestions { top: calc(100% + 2px); }
+/* Dans un formulaire, la liste pousse ce qui suit au lieu de le recouvrir :
+   posée par-dessus, elle interceptait le toucher destiné au bouton de calcul. */
+.champ-lieu .suggestions {
+  position: static; margin-top: 5px; max-height: 210px; box-shadow: none;
+}
 
 .autonomie {
   display: flex; justify-content: space-between; align-items: center;
