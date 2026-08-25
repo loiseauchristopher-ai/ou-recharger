@@ -211,7 +211,8 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   flex: 1;
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr) 380px;
-  grid-template-areas: "filtres carte resultats";
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "filtres carte cockpit" "filtres carte resultats";
   gap: 0;
   min-height: 0;
 }
@@ -282,7 +283,7 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
   font-size: 12px; color: var(--texte-doux); margin-bottom: 4px;
 }
-.champ select, .champ input[type="search"] {
+.champ select, .champ input[type="search"], .champ input[type="text"] {
   width: 100%; padding: 8px 10px; border: 1px solid var(--trait);
   border-radius: 8px; background: var(--surface-2); color: inherit;
   font: inherit; font-size: 13px;
@@ -389,6 +390,17 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
 /* ------------------------------------------------------------------- Carte */
 
 .zone-carte { grid-area: carte; position: relative; min-height: 320px; }
+
+/* Le cockpit a sa propre place dans la grille. Sur telephone il passe AVANT la
+   carte : on prend son telephone dans la voiture pour partir, pas pour
+   contempler une carte — la destination doit tomber sous le pouce sans
+   defiler. */
+.zone-cockpit {
+  grid-area: cockpit;
+  background: var(--surface);
+  border-left: 1px solid var(--trait);
+  padding: 14px 14px 0;
+}
 .carte-conteneur { position: absolute; inset: 0; }
 #carte { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 #carte.saisi { cursor: grabbing; }
@@ -526,13 +538,49 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
 }
 .jauge:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 999px; }
 .cockpit-trajets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+/* Une destination se touche au volant, moteur tournant : la bulle occupe donc
+   toute la largeur et depasse les 44 px que reclame un doigt. Le verdict est
+   sous le nom, pour qu'un coup d'oeil suffise avant meme de toucher. */
 .bulle-trajet {
   border: 1px solid var(--trait); background: var(--surface-2); color: inherit;
-  border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 12px; padding: 10px 14px; font: inherit; font-size: 15px; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  text-align: left; text-decoration: none; min-height: 52px;
 }
 .bulle-trajet:hover { border-color: var(--accent); background: var(--accent-doux); }
-.bulle-trajet.ajout { border-style: dashed; color: var(--texte-doux); }
+.bulle-nom { font-weight: 600; flex: none; }
+.bulle-etat { color: var(--texte-doux); font-size: 12.5px; flex: 1; }
+.bulle-gps {
+  flex: none; font-size: 13px; font-weight: 600; color: var(--accent);
+  border: 1px solid currentColor; border-radius: 999px; padding: 5px 10px;
+}
+/* Une barre de couleur a gauche : verte on passe, orange il faut s'arreter. */
+.bulle-trajet.ok { border-left: 5px solid var(--ok); }
+.bulle-trajet.arret { border-left: 5px solid var(--occupe); }
+.bulle-trajet.souci { border-left: 5px solid var(--hs); }
+.bulle-trajet.attente { border-left: 5px solid var(--trait); }
+.bulle-trajet.ok .bulle-etat { color: var(--ok); }
+.bulle-trajet.arret .bulle-etat { color: var(--occupe); }
+.bulle-trajet.souci .bulle-etat { color: var(--hs); }
+.bulle-trajet.ajout {
+  border-style: dashed; border-left-style: dashed; color: var(--texte-doux);
+  justify-content: center; font-size: 13px; min-height: 40px; font-weight: 500;
+}
+
+.destination {
+  display: flex; gap: 10px; align-items: flex-start; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid var(--trait); flex-wrap: wrap;
+}
+.destination-texte { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.destination-adresse { font-size: 12.5px; color: var(--texte-doux); }
+.destination-depart { font-size: 11.5px; color: var(--texte-doux); }
+.destination-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.destination-actions .lien { font-size: 12.5px; padding: 4px 0; }
+.destination-actions .lien[disabled] { opacity: .3; cursor: default; }
+.lien.danger { color: var(--hs); }
+.chip.actif {
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500;
+}
 .cockpit-alerte {
   margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px;
   background: color-mix(in srgb, var(--occupe) 15%, transparent); color: var(--occupe);
@@ -719,7 +767,12 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
 /* ------------------------------------------------------------- Adaptations */
 
 @media (max-width: 1100px) {
-  .grille { grid-template-columns: 280px minmax(0, 1fr); grid-template-areas: "filtres carte" "filtres resultats"; }
+  .grille {
+    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "filtres cockpit" "filtres carte" "filtres resultats";
+  }
+  .zone-cockpit { border-left: 0; border-bottom: 1px solid var(--trait); padding-bottom: 14px; }
   .zone-carte { min-height: 46dvh; }
   .zone-resultats { border-left: 0; border-top: 1px solid var(--trait); max-height: none; }
 }
@@ -756,7 +809,12 @@ h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: v
   .entete { gap: 10px; padding: 9px 12px; }
   .bascule-filtres { display: inline-flex; }
   .texte-bouton { display: none; }
-  .grille { grid-template-columns: minmax(0, 1fr); grid-template-areas: "carte" "resultats"; }
+  .grille {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "cockpit" "carte" "resultats";
+  }
+  .zone-cockpit { border-left: 0; border-bottom: 1px solid var(--trait); padding-bottom: 12px; }
   .filtres-entete .fermer { display: block; }
   .panneau-filtres {
     position: fixed; inset: 0 auto 0 0; width: min(330px, 90vw); z-index: 60;

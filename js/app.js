@@ -44,6 +44,9 @@
 
   var etat = {
     centre: null,            // { lat, lon, libelle }
+    /* La position reelle, gardee a part : chercher une ville deplace le centre
+     * mais ne change pas l'endroit d'ou l'on partira. */
+    position: null,
     rayon: 10,
     puissanceMin: 0,
     prises: 0,
@@ -841,6 +844,7 @@
       repondu = true; clearTimeout(abandon);
       btn.disabled = false;
       bandeau(null, true);
+      noterPosition(p.coords.latitude, p.coords.longitude);
       choisirLieu({ lat: p.coords.latitude, lon: p.coords.longitude, libelle: 'Ma position' });
     }, function (err) {
       if (repondu) return;
@@ -1492,6 +1496,7 @@
     suiviVerifie = Date.now();
 
     navigator.geolocation.getCurrentPosition(function (p) {
+      noterPosition(p.coords.latitude, p.coords.longitude);
       var ou = B.trajetEnCours.situer(suivi, p.coords.latitude, p.coords.longitude);
       if (!ou) return;
       if (ou.arrive) {
@@ -1513,6 +1518,222 @@
 
   /* ---------------------------------------------------------- Cockpit */
 
+  /* --------------------------------------------- Destinations habituelles */
+
+  /* « Je monte dans la voiture, je touche Travail, je pars. »
+   *
+   * Tout le calcul doit donc etre fait AVANT le toucher. Des que la position
+   * est connue, chaque destination est preparee en fond ; la bulle affiche
+   * alors son verdict, et le toucher n'a plus qu'a ouvrir le GPS.
+   *
+   * Cette avance n'est pas qu'un confort : une ouverture de fenetre differee,
+   * apres un calcul, n'est plus rattachee au geste de l'utilisateur et Safari
+   * la bloque. Une bulle prete est un vrai lien — rien ne s'y oppose.
+   *
+   * La route ne depend pas du niveau de batterie : on la garde, et seul le
+   * plan d'arrets se recalcule quand la jauge bouge. Sans reseau, sans delai.
+   */
+  var verdicts = {};
+  var preparationEnCours = false;
+
+  function noterPosition(lat, lon) {
+    var bougee = !etat.position ||
+      B.distanceKm(etat.position.lat, etat.position.lon, lat, lon) > 1;
+    etat.position = { lat: lat, lon: lon, libelle: 'Ma position' };
+    if (bougee) preparerDestinations();
+  }
+
+  function departDe(t) { return t.depart || etat.position; }
+
+  /* Recalcule le plan d'arrets a partir de la route deja connue. Aucun appel
+   * reseau : c'est ce qui permet de suivre la jauge en direct. */
+  function replanifier(t) {
+    var v = verdicts[t.id];
+    var voiture = vehiculeCourant();
+    if (!v || v.etat !== 'pret' || !voiture) return;
+    if (!v.candidates || v.pourVehicule !== voiture.nom) {
+      v.candidates = B.trajet.stationsSurLaRoute(
+        jeu, stationsUtilisables(voiture), v.jalons, 6);
+      v.pourVehicule = voiture.nom;
+    }
+    try {
+      v.plan = B.trajet.planifier({
+        jeu: jeu, vehicule: voiture, jalons: v.jalons, candidates: v.candidates,
+        tempsReel: tempsReel.parStation, chargeDepart: etatCharge(),
+        reserve: voiture.reserve != null ? voiture.reserve : 10
+      });
+      v.echec = null;
+    } catch (e) {
+      v.plan = null;
+      v.echec = e.message;
+    }
+  }
+
+  function preparerDestination(t) {
+    var d = departDe(t);
+    var voiture = vehiculeCourant();
+    if (!d || !voiture || !jeu) return Promise.resolve();
+    var v = verdicts[t.id];
+    if (v && v.etat === 'calcul') return Promise.resolve();
+    /* Meme point de depart qu'au dernier calcul : la route est encore bonne. */
+    if (v && v.etat === 'pret' &&
+        B.distanceKm(v.depuis.lat, v.depuis.lon, d.lat, d.lon) < 1) {
+      replanifier(t);
+      rendreBulles();
+      return Promise.resolve();
+    }
+    verdicts[t.id] = { etat: 'calcul' };
+    rendreBulles();
+    return B.trajet.itineraire(d, t.arrivee).then(function (route) {
+      verdicts[t.id] = {
+        etat: 'pret', route: route,
+        depuis: { lat: d.lat, lon: d.lon },
+        lieux: [d, t.arrivee],
+        jalons: B.trajet.jalonner(route.points, 2)
+      };
+      B.trajetsEnregistres.memoriser(t.id, route.distance);
+      replanifier(t);
+      rendreBulles();
+    }).catch(function (e) {
+      verdicts[t.id] = { etat: 'erreur', message: e.message };
+      rendreBulles();
+    });
+  }
+
+  /* En file, pas en parallele : le service de routage est public et gratuit,
+   * huit demandes simultanees a chaque ouverture seraient malpolies. */
+  function preparerDestinations() {
+    if (preparationEnCours) return;
+    var liste = B.trajetsEnregistres.lire().filter(departDe);
+    if (!liste.length || !jeu || !vehiculeCourant()) return;
+    preparationEnCours = true;
+    liste.reduce(function (chaine, t) {
+      return chaine.then(function () { return preparerDestination(t); });
+    }, Promise.resolve()).then(function () { preparationEnCours = false; });
+  }
+
+  /* La jauge a bouge, ou le vehicule a change : meme route, autre plan. */
+  function rafraichirDestinations() {
+    B.trajetsEnregistres.lire().forEach(function (t) {
+      if (verdicts[t.id] && verdicts[t.id].etat === 'pret') replanifier(t);
+    });
+  }
+
+  function minutesDeRecharge(plan) {
+    return plan.etapes.reduce(function (t, e) { return t + (e.minutes || 0); }, 0);
+  }
+
+  /* Ce que dit la bulle sous le nom de la destination. */
+  function verdictLisible(t) {
+    var v = verdicts[t.id];
+    if (!departDe(t)) return { classe: 'attente', texte: 'position inconnue' };
+    if (!v) return { classe: 'attente', texte: 'à préparer' };
+    if (v.etat === 'calcul') return { classe: 'attente', texte: 'calcul…' };
+    if (v.etat === 'erreur') return { classe: 'souci', texte: 'itinéraire indisponible' };
+    if (v.echec) return { classe: 'souci', texte: 'aucun arrêt trouvé' };
+    if (!v.plan) return { classe: 'attente', texte: 'à préparer' };
+    var km = Math.round(v.plan.distance);
+    if (!v.plan.etapes.length) {
+      return {
+        classe: 'ok',
+        texte: km + ' km · arrivée à ' + Math.round(v.plan.chargeArrivee) + ' %'
+      };
+    }
+    var n = v.plan.etapes.length;
+    return {
+      classe: 'arret',
+      texte: km + ' km · ' + n + ' arrêt' + (n > 1 ? 's' : '') +
+        ' · ' + formatDuree(minutesDeRecharge(v.plan)) + ' de charge'
+    };
+  }
+
+  /* L'application de navigation choisie une fois pour toutes, pour qu'aucune
+   * question ne se pose au moment de partir. */
+  function lienGpsPrefere(lat, lon) {
+    var applis = applisNavigation(lat, lon).filter(function (a) {
+      return a.nom !== 'OpenStreetMap';
+    });
+    var voulu = B.trajetsEnregistres.gps();
+    var trouve = null;
+    applis.forEach(function (a) { if (a.nom === voulu) trouve = a; });
+    return trouve || applis[0];
+  }
+
+  /* Ou emmene le toucher : l'arrivee si la batterie suffit, le premier arret
+   * sinon. C'est la seule chose que Waze sache faire — une destination. */
+  function cibleDuToucher(t) {
+    var v = verdicts[t.id];
+    if (!v || v.etat !== 'pret' || !v.plan) return null;
+    if (!v.plan.etapes.length) return t.arrivee;
+    var st = v.plan.etapes[0].station;
+    return { lat: jeu.latitude(st), lon: jeu.longitude(st), libelle: jeu.libelle(st) };
+  }
+
+  function rendreBulles() {
+    var boite = $('#cockpit-trajets');
+    if (!boite) return;
+    var liste = B.trajetsEnregistres.lire();
+
+    boite.innerHTML = liste.map(function (t) {
+      var etatVerdict = verdictLisible(t);
+      var cible = cibleDuToucher(t);
+      var dedans = '<span class="bulle-nom">' + echapper(t.nom) + '</span>' +
+        '<span class="bulle-etat">' + echapper(etatVerdict.texte) + '</span>';
+      if (cible) {
+        var lien = lienGpsPrefere(cible.lat, cible.lon);
+        return '<a class="bulle-trajet prete ' + etatVerdict.classe + '" href="' + lien.url +
+          '" target="_blank" rel="noopener" data-partir="' + t.id + '">' + dedans +
+          '<span class="bulle-gps">' + echapper(lien.nom) + ' &#9654;</span></a>';
+      }
+      return '<button type="button" class="bulle-trajet ' + etatVerdict.classe +
+        '" data-trajet="' + t.id + '">' + dedans + '</button>';
+    }).join('') +
+      '<button type="button" class="bulle-trajet ajout" id="cockpit-destinations">' +
+      (liste.length ? '&#9881; Destinations' : '&#65291; Destination') + '</button>';
+
+    boite.querySelectorAll('[data-partir]').forEach(function (a) {
+      /* Le lien s'ouvre tout seul ; on en profite pour armer le suivi, qui
+       * ramenera l'arret suivant au retour. */
+      a.addEventListener('click', function () { armerSuivi(this.dataset.partir); });
+    });
+    boite.querySelectorAll('[data-trajet]').forEach(function (b) {
+      b.addEventListener('click', function () { toucherNonPrete(this.dataset.trajet); });
+    });
+    $('#cockpit-destinations').addEventListener('click', ouvrirDestinations);
+
+    /* Le verdict d'ensemble se rejoue avec les bulles : sans cela il resterait
+     * sur « Preparation… » alors que les reponses sont deja arrivees. */
+    var resume = $('#cockpit-verdict');
+    var actif = B.parc.actif();
+    if (resume && actif) resume.innerHTML = rendreAlerteAutonomie(actif, etatCharge());
+  }
+
+  function armerSuivi(id) {
+    var t = B.trajetsEnregistres.trouver(id);
+    var v = t && verdicts[t.id];
+    if (!t || !v || !v.plan) return;
+    if (!v.plan.etapes.length) { B.trajetEnCours.oublier(); rendreCockpit(); return; }
+    B.trajetEnCours.demarrer(v.plan, v.lieux, jeu);
+    rendreCockpit();
+  }
+
+  /* Bulle pas encore prete : on prepare, et on le dit. On ne peut pas ouvrir
+   * le GPS dans la foulee — le navigateur bloquerait la fenetre. */
+  function toucherNonPrete(id) {
+    var t = B.trajetsEnregistres.trouver(id);
+    if (!t) return;
+    if (!departDe(t)) {
+      geolocaliser(false);
+      return;
+    }
+    preparerDestination(t).then(function () {
+      var v = verdicts[t.id];
+      if (v && v.etat === 'pret' && v.plan) {
+        bandeau(t.nom + ' est prêt — touchez à nouveau pour partir.', true);
+      }
+    });
+  }
+
   /* L'écran d'accueil doit répondre à une seule question : « est-ce que je
    * passe ? ». D'où l'état de charge en gros, et les trajets habituels à une
    * touche — l'usage quotidien, pas la recherche exploratoire. */
@@ -1528,10 +1749,13 @@
         'alors si vous atteignez votre destination, et où vous arrêter sinon.</p>' +
         '<div class="cockpit-trajets">' +
         '<button type="button" class="bulle-trajet ajout" id="cockpit-ajouter-vehicule">' +
-        '＋ Ajouter mon véhicule</button></div>';
+        '＋ Ajouter mon véhicule</button>' +
+        '<button type="button" class="bulle-trajet ajout" id="cockpit-destinations">' +
+        '⚙ Destinations</button></div>';
       $('#cockpit-ajouter-vehicule').addEventListener('click', function () {
         ouvrirParametres('marques');
       });
+      $('#cockpit-destinations').addEventListener('click', ouvrirDestinations);
       brancherSuivi();
       return;
     }
@@ -1558,46 +1782,76 @@
       '<button type="button" class="pas" id="charge-plus" aria-label="Cinq pour cent de plus">+</button>' +
       '</div>' +
       '<div class="cockpit-detail">Batterie à ' + pourcent + ' % — touchez la barre ou glissez</div>' +
-      '<div class="cockpit-trajets">' +
-      B.trajetsEnregistres.lire().map(function (t) {
-        return '<button type="button" class="bulle-trajet" data-trajet="' + t.id + '">' +
-          echapper(t.nom) + '</button>';
-      }).join('') +
-      '<button type="button" class="bulle-trajet ajout" id="cockpit-nouveau-trajet">' +
-      '＋ Trajet</button>' +
-      '</div>' +
-      rendreAlerteAutonomie(actif, pourcent);
+      '<div class="cockpit-trajets" id="cockpit-trajets"></div>' +
+      '<div id="cockpit-verdict"></div>';
 
     brancherJaugeCharge();
-    $('#cockpit-nouveau-trajet').addEventListener('click', function () {
-      ouvrirPanneau('trajet');
-    });
-    boite.querySelectorAll('[data-trajet]').forEach(function (b) {
-      b.addEventListener('click', function () { lancerTrajetEnregistre(this.dataset.trajet); });
-    });
+    rendreBulles();
     brancherSuivi();
   }
 
   /* « Est-ce que j'arrive ? » — la question se pose avant de partir, pas une
-   * fois en route. Dès qu'un trajet habituel a une distance connue, on compare
-   * avec l'autonomie restante et on le dit. */
+   * fois en route.
+   *
+   * Quand une destination a ete preparee, on sait exactement : distance reelle
+   * par la route, et arrets necessaires ou non. Sinon on retombe sur la
+   * derniere distance connue, comparee a l'autonomie restante. */
   function rendreAlerteAutonomie(actif, pourcent) {
     var portee = actif.batterie * Math.max(0, pourcent - actif.reserve) / 100 / actif.conso * 100;
-    var courts = B.trajetsEnregistres.lire().filter(function (t) { return t.distance > 0; });
-    if (!courts.length) return '';
+    var liste = B.trajetsEnregistres.lire();
+    if (!liste.length) {
+      return '<p class="cockpit-detail">Enregistrez vos destinations habituelles : ' +
+        'un toucher suffira ensuite à savoir si la batterie passe.</p>';
+    }
 
-    var risques = courts.filter(function (t) { return t.distance > portee; });
+    /* Ce que disent les verdicts deja calcules. */
+    var prets = liste.filter(function (t) {
+      var v = verdicts[t.id];
+      return v && v.etat === 'pret' && v.plan;
+    });
+    var avecArret = prets.filter(function (t) { return verdicts[t.id].plan.etapes.length; });
+
+    if (avecArret.length) {
+      var t = avecArret[0];
+      var plan = verdicts[t.id].plan;
+      var e = plan.etapes[0];
+      return '<div class="cockpit-alerte">Avec ' + pourcent + ' %, <strong>' +
+        echapper(t.nom) + '</strong> demande ' + plan.etapes.length + ' arrêt' +
+        (plan.etapes.length > 1 ? 's' : '') + ' — le premier au km ' + Math.round(e.km) +
+        ', ' + echapper(jeu.libelle(e.station)) + '. Touchez la destination : ' +
+        'la navigation vous y emmène.</div>';
+    }
+    if (prets.length) {
+      var plusLoin = prets.reduce(function (a, b) {
+        return verdicts[a.id].plan.distance > verdicts[b.id].plan.distance ? a : b;
+      });
+      var p = verdicts[plusLoin.id].plan;
+      return '<p class="cockpit-detail">Aucun arrêt nécessaire : ' +
+        'la plus lointaine (' + echapper(plusLoin.nom) + ', ' + Math.round(p.distance) +
+        ' km) laisse ' + Math.round(p.chargeArrivee) + ' % à l’arrivée.</p>';
+    }
+
+    /* Rien de calcule : la derniere distance connue vaut mieux que le silence. */
+    var connus = liste.filter(function (t) { return t.distance > 0; });
+    if (!connus.length) {
+      return '<p class="cockpit-detail">' +
+        (etat.position
+          ? 'Préparation des destinations…'
+          : 'Autorisez la position pour savoir, dès l’ouverture, si la batterie passe.') +
+        '</p>';
+    }
+    var risques = connus.filter(function (t) { return t.distance > portee; });
     if (!risques.length) {
-      var plusLong = courts.reduce(function (a, b) { return a.distance > b.distance ? a : b; });
-      return '<p class="cockpit-detail">Autonomie suffisante pour vos trajets ' +
-        'habituels (le plus long : ' + echapper(plusLong.nom) + ', ' +
+      var plusLong = connus.reduce(function (a, b) { return a.distance > b.distance ? a : b; });
+      return '<p class="cockpit-detail">Autonomie suffisante pour vos destinations ' +
+        '(la plus lointaine : ' + echapper(plusLong.nom) + ', ' +
         Math.round(plusLong.distance) + ' km).</p>';
     }
-    var t = risques[0];
+    var r = risques[0];
     return '<div class="cockpit-alerte">Avec ' + pourcent + ' %, vous n’atteignez pas ' +
-      '<strong>' + echapper(t.nom) + '</strong> : ' + Math.round(t.distance) +
+      '<strong>' + echapper(r.nom) + '</strong> : ' + Math.round(r.distance) +
       ' km pour ' + Math.round(portee) + ' km d’autonomie utile. ' +
-      'Touchez le trajet pour voir où recharger.</div>';
+      'Touchez la destination pour voir où recharger.</div>';
   }
 
   /* Barre de charge tactile.
@@ -1640,6 +1894,7 @@
       afficher(pourcent);
       if (definitif) {
         definirEtatCharge(pourcent);
+        rafraichirDestinations();
         rendreCockpit();
       }
     }
@@ -1697,15 +1952,17 @@
     if (champ) { champ.value = pourcent; majConso(false); }
   }
 
+  /* Le detail complet — arrets, heures, liens — dans le planificateur. Le
+   * depart est celui de la destination, ou la position du moment. */
   function lancerTrajetEnregistre(id) {
-    var trajetEnregistre = null;
-    B.trajetsEnregistres.lire().forEach(function (t) { if (t.id === id) trajetEnregistre = t; });
-    if (!trajetEnregistre) return;
+    var t = B.trajetsEnregistres.trouver(id);
+    if (!t) return;
+    var d = departDe(t);
+    if (!d) { geolocaliser(false); return; }
     ouvrirPanneau('trajet');
-    $('#champ-depart').value = trajetEnregistre.depart.libelle;
-    $('#champ-arrivee').value = trajetEnregistre.arrivee.libelle;
-    trajet.prefixe = trajetEnregistre;
-    calculerTrajet(trajetEnregistre);
+    $('#champ-depart').value = d.libelle;
+    $('#champ-arrivee').value = t.arrivee.libelle;
+    calculerTrajet({ depart: d, arrivee: t.arrivee });
   }
 
   /* --------------------------------------------------------- Panneaux */
@@ -1747,6 +2004,10 @@
     } else if (nom === 'parametres') {
       $('#modale-parametres').hidden = !ouvert;
       if (!ouvert) majVehiculeActif();
+    } else if (nom === 'destinations') {
+      $('#modale-destinations').hidden = !ouvert;
+      if (ouvert) rendreDestinations();
+      else rendreBulles();
     }
   }
 
@@ -1755,6 +2016,216 @@
       appliquerPanneau(nom, false);
     });
     panneauxOuverts = [];
+  }
+
+  /* ------------------------------------------------------- Destinations */
+
+  var lieuDestination = null;
+
+  function ouvrirDestinations() { ouvrirPanneau('destinations'); }
+
+  function messageDestination(texte) {
+    var p = $('#dest-message');
+    if (p) p.textContent = texte || '';
+  }
+
+  function rendreDestinations() {
+    var liste = B.trajetsEnregistres.lire();
+    var boite = $('#liste-destinations');
+
+    boite.innerHTML = liste.length
+      ? liste.map(function (t, k) {
+          return '<div class="destination" data-id="' + t.id + '">' +
+            '<div class="destination-texte">' +
+            '<strong>' + echapper(t.nom) + '</strong>' +
+            '<span class="destination-adresse">' + echapper(t.arrivee.libelle) + '</span>' +
+            '<span class="destination-depart">' +
+            (t.depart ? 'depuis ' + echapper(t.depart.libelle) : 'depuis ma position') +
+            (t.distance ? ' · ' + Math.round(t.distance) + ' km' : '') + '</span>' +
+            '</div>' +
+            '<div class="destination-actions">' +
+            '<button type="button" class="lien" data-monter="' + t.id + '"' +
+            (k === 0 ? ' disabled' : '') + ' aria-label="Monter">&#9650;</button>' +
+            '<button type="button" class="lien" data-descendre="' + t.id + '"' +
+            (k === liste.length - 1 ? ' disabled' : '') + ' aria-label="Descendre">&#9660;</button>' +
+            '<button type="button" class="lien" data-detail="' + t.id + '">détail</button>' +
+            '<button type="button" class="lien" data-renommer="' + t.id + '">renommer</button>' +
+            (t.depart
+              ? '<button type="button" class="lien" data-liberer="' + t.id +
+                '">partir d’ici</button>'
+              : '') +
+            '<button type="button" class="lien danger" data-oter="' + t.id +
+            '">supprimer</button>' +
+            '</div></div>';
+        }).join('')
+      : '<p class="aide">Aucune destination pour l’instant.</p>';
+
+    boite.querySelectorAll('[data-oter]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var t = B.trajetsEnregistres.trouver(this.dataset.oter);
+        if (!t || !confirm('Supprimer « ' + t.nom + ' » ?')) return;
+        delete verdicts[t.id];
+        B.trajetsEnregistres.supprimer(t.id);
+        rendreDestinations();
+      });
+    });
+    boite.querySelectorAll('[data-detail]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = this.dataset.detail;
+        fermerPanneau('destinations');
+        lancerTrajetEnregistre(id);
+      });
+    });
+    boite.querySelectorAll('[data-renommer]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var t = B.trajetsEnregistres.trouver(this.dataset.renommer);
+        if (!t) return;
+        var nom = prompt('Nom de cette destination :', t.nom);
+        if (nom == null) return;
+        B.trajetsEnregistres.renommer(t.id, nom);
+        rendreDestinations();
+      });
+    });
+    /* Un trajet enregistre depuis le planificateur garde son depart d'origine.
+     * Le liberer, c'est en faire une vraie destination : on part d'ou l'on est. */
+    boite.querySelectorAll('[data-liberer]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = this.dataset.liberer;
+        B.trajetsEnregistres.fixerDepart(id, null);
+        delete verdicts[id];
+        rendreDestinations();
+        preparerDestinations();
+      });
+    });
+    boite.querySelectorAll('[data-monter]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        B.trajetsEnregistres.deplacer(this.dataset.monter, -1);
+        rendreDestinations();
+      });
+    });
+    boite.querySelectorAll('[data-descendre]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        B.trajetsEnregistres.deplacer(this.dataset.descendre, 1);
+        rendreDestinations();
+      });
+    });
+
+    rendreChoixGps();
+    rendreAideInstallation();
+  }
+
+  function rendreChoixGps() {
+    var boite = $('#chips-gps');
+    var courant = B.trajetsEnregistres.gps();
+    var applis = applisNavigation(0, 0).filter(function (a) {
+      return a.nom !== 'OpenStreetMap';
+    });
+    boite.innerHTML = applis.map(function (a) {
+      return '<button type="button" class="chip' + (a.nom === courant ? ' actif' : '') +
+        '" data-gps="' + echapper(a.nom) + '">' + echapper(a.nom) + '</button>';
+    }).join('');
+    boite.querySelectorAll('[data-gps]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        B.trajetsEnregistres.fixerGps(this.dataset.gps);
+        rendreChoixGps();
+      });
+    });
+  }
+
+  /* Ouvrir l'application depuis l'ecran d'accueil enleve un toucher et la barre
+   * d'adresse. Le geste differe selon le navigateur : on nomme le bon. */
+  function rendreAideInstallation() {
+    var p = $('#aide-installation');
+    if (!p) return;
+    if (global.matchMedia && global.matchMedia('(display-mode: standalone)').matches) {
+      p.textContent = 'C’est déjà fait : vous ouvrez l’application depuis votre écran d’accueil.';
+      return;
+    }
+    if (surIphone()) {
+      p.textContent = navigateurIOS() === 'Safari'
+        ? 'Touchez le bouton Partager (le carré avec la flèche), puis « Sur l’écran ' +
+          'd’accueil ». L’icône éclair ouvrira l’application en un toucher, sans barre d’adresse.'
+        : 'Sur iPhone, seul Safari sait ajouter un site à l’écran d’accueil : ouvrez cette ' +
+          'page dans Safari, puis Partager → « Sur l’écran d’accueil ».';
+      return;
+    }
+    p.textContent = 'Dans le menu de votre navigateur, choisissez « Ajouter à l’écran ' +
+      'd’accueil » : l’application s’ouvrira en un toucher.';
+  }
+
+  function ajouterDestination(arrivee) {
+    var nom = $('#champ-dest-nom').value.trim() || arrivee.libelle.split(',')[0];
+    B.trajetsEnregistres.enregistrerDestination(nom, arrivee);
+    $('#champ-dest-nom').value = '';
+    $('#champ-dest-adresse').value = '';
+    lieuDestination = null;
+    messageDestination('« ' + nom +' » ajouté. Calcul de l’itinéraire…');
+    rendreDestinations();
+    preparerDestinations();
+  }
+
+  function brancherDestinations() {
+    $('#btn-fermer-destinations').addEventListener('click', function () {
+      fermerPanneau('destinations');
+    });
+    $('#fond-destinations').addEventListener('click', function () {
+      fermerPanneau('destinations');
+    });
+
+    var champAdresse = brancherSuggestions('#champ-dest-adresse', '#suggestions-dest-adresse');
+
+    $('#chips-nom').querySelectorAll('[data-nom]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        $('#champ-dest-nom').value = this.dataset.nom;
+        $('#champ-dest-adresse').focus();
+      });
+    });
+
+    $('#btn-dest-ajouter').addEventListener('click', function () {
+      var texte = $('#champ-dest-adresse').value.trim();
+      if (!texte) { messageDestination('Indiquez une adresse.'); return; }
+      var choix = champAdresse.choix();
+      /* Une proposition retenue dans la liste est deja localisee : la renvoyer
+       * au geocodage risquerait de tomber sur un autre lieu du meme nom. */
+      if (choix && choix.libelle === texte) { ajouterDestination(choix); return; }
+      messageDestination('Recherche de l’adresse…');
+      lieuDepuisTexte(texte)
+        .then(ajouterDestination)
+        .catch(function (e) { messageDestination(e.message); });
+    });
+
+    /* « Je suis ici » : l'endroit ou l'on se trouve devient une destination —
+     * le domicile s'enregistre depuis son allee, sans taper une adresse. */
+    $('#btn-dest-ici').addEventListener('click', function () {
+      if (!etat.position) {
+        messageDestination('Position inconnue pour l’instant.');
+        geolocaliser(false);
+        return;
+      }
+      messageDestination('Recherche de l’adresse…');
+      inverseAdresse(etat.position).then(function (libelle) {
+        ajouterDestination({
+          lat: etat.position.lat, lon: etat.position.lon, libelle: libelle
+        });
+      });
+    });
+  }
+
+  /* Nommer un point par son adresse plutot que par ses coordonnees. Si le
+   * service ne repond pas, on garde les coordonnees : c'est moins lisible,
+   * mais cela reste juste. */
+  function inverseAdresse(point) {
+    return fetch('https://api-adresse.data.gouv.fr/reverse/?lat=' + point.lat +
+        '&lon=' + point.lon)
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP')); })
+      .then(function (j) {
+        var f = j.features && j.features[0];
+        return f ? f.properties.label : null;
+      })
+      .catch(function () { return null; })
+      .then(function (libelle) {
+        return libelle || (point.lat.toFixed(5) + ', ' + point.lon.toFixed(5));
+      });
   }
 
   /* ------------------------------------------------- Réglages du véhicule */
@@ -2071,6 +2542,7 @@
     $('#btn-trajet').addEventListener('click', calculerTrajet);
 
     $('#btn-parametres').addEventListener('click', function () { ouvrirParametres(); });
+    brancherDestinations();
     $('#btn-fermer-parametres').addEventListener('click', fermerParametres);
     $('#fond-parametres').addEventListener('click', fermerParametres);
   }
@@ -2217,6 +2689,9 @@
     $('#chargement').hidden = true;
     verifierProgression();
     geolocaliserAuDemarrage();
+    /* Un depart fixe n'attend pas la position : sa route peut partir tout de
+     * suite. Les autres suivront des que la geolocalisation aura repondu. */
+    preparerDestinations();
   }
 
   /* Le flux d'état est national : rien à recharger quand la carte bouge. Reste

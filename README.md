@@ -158,11 +158,50 @@ Trois principes tirés des retours d'usage :
 - **Trajet et filtres sont deux choses distinctes.** Planifier n'est pas
   filtrer : le planificateur a son propre panneau, les filtres le leur.
 
-Les **trajets habituels** — « travail », « maison » — sont enregistrés avec leur
-distance, ce qui permet l'alerte sans recalcul. Chaque véhicule porte enfin sa
-**puissance de borne préférée** : sur une Model 3 réglée sur ≥ 150 kW,
-Toulouse–Lyon se fait en un seul arrêt de douze minutes, contre deux arrêts et
-quarante minutes sur une e-208 à ≥ 50 kW.
+Chaque véhicule porte enfin sa **puissance de borne préférée** : sur une Model 3
+réglée sur ≥ 150 kW, Toulouse–Lyon se fait en un seul arrêt de douze minutes,
+contre deux arrêts et quarante minutes sur une e-208 à ≥ 50 kW.
+
+## Destinations : un toucher, et on part
+
+Le geste réel est celui-ci : on est déjà dans la voiture, moteur tournant, et
+on veut partir. Chercher une adresse, choisir un départ, attendre un calcul —
+personne ne le fera deux fois. D'où les **destinations habituelles** : « maison »,
+« travail », « famille ». Ce qu'on enregistre est l'**arrivée seule** ; le départ
+est toujours l'endroit où l'on se trouve.
+
+Le calcul se fait **avant** le toucher. Dès que la position est connue, chaque
+destination est préparée en fond, et sa bulle affiche son verdict :
+
+```
+Travail   6 km · arrivée à 78 %                      [ Waze ▶ ]   (barre verte)
+Dijon     575 km · 2 arrêts · 44 min de charge       [ Waze ▶ ]   (barre orange)
+```
+
+Un toucher ouvre alors la navigation — vers l'arrivée si la batterie suffit,
+vers le **premier arrêt** sinon, le suivi prenant le relais pour la suite. Cette
+avance n'est pas qu'un confort : une ouverture de fenêtre déclenchée après un
+calcul n'est plus rattachée au geste de l'utilisateur, et Safari la bloque. Une
+bulle prête est un vrai lien, que rien n'intercepte.
+
+Le cockpit est **au-dessus de la carte**, pas en dessous : on prend son téléphone
+pour partir, pas pour contempler une carte.
+
+Trois conséquences de cette architecture :
+
+- **La route est gardée, le plan est rejoué.** Bouger la jauge de 80 % à 25 %
+  recalcule les arrêts en moins d'une demi-seconde, sans réseau : la route ne
+  dépend pas du niveau de batterie, seul le plan en dépend. La Valette–Dijon en
+  e-208 passe de 2 arrêts à 3.
+- **Les requêtes de routage partent en file, pas en parallèle.** Le service OSRM
+  est public et gratuit ; huit demandes simultanées à chaque ouverture seraient
+  malpolies.
+- **L'application de navigation se choisit une fois** (Waze par défaut, le seul à
+  tenir compte du trafic), pour qu'aucune question ne se pose au moment de partir.
+
+Un **manifeste** permet enfin d'ajouter l'application à l'écran d'accueil : elle
+s'ouvre alors en un toucher, sans barre d'adresse. Le geste diffère selon le
+navigateur, et l'app nomme le bon — sur iPhone, seul Safari sait le faire.
 
 ## Planifier un trajet
 

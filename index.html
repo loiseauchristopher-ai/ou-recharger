@@ -10,6 +10,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icone-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Recharger">
+<meta name="theme-color" content="#0f172a">
 </head>
 <body>
 <a class="evitement" href="#resultats">Aller aux résultats</a>
@@ -126,8 +131,11 @@
     </div>
   </section>
 
-  <section class="zone-resultats" id="resultats" aria-live="polite">
+  <section class="zone-cockpit">
     <div class="cockpit" id="cockpit"></div>
+  </section>
+
+  <section class="zone-resultats" id="resultats" aria-live="polite">
     <div class="resultats-entete">
       <h2 id="titre-resultats">Résultats</h2>
       <label class="tri">
@@ -247,6 +255,59 @@
       <button type="button" class="fermer" id="btn-fermer-parametres" aria-label="Fermer">×</button>
     </div>
     <div class="modale-corps" id="corps-parametres"></div>
+  </div>
+</div>
+
+<div class="modale" id="modale-destinations" hidden>
+  <div class="modale-fond" id="fond-destinations"></div>
+  <div class="modale-boite" role="dialog" aria-modal="true" aria-labelledby="titre-destinations">
+    <div class="modale-entete">
+      <h2 id="titre-destinations">Mes destinations</h2>
+      <button type="button" class="fermer" id="btn-fermer-destinations" aria-label="Fermer">&#215;</button>
+    </div>
+    <div class="modale-corps" id="corps-destinations">
+      <p class="aide">
+        Une destination, un toucher : l&#8217;application part de l&#8217;endroit o&#249; vous
+        &#234;tes et vous dit, avant de d&#233;marrer, si la batterie suffit.
+      </p>
+
+      <div id="liste-destinations"></div>
+
+      <h3>Ajouter une destination</h3>
+      <div class="champ">
+        <label for="champ-dest-nom">Nom</label>
+        <div class="chips" id="chips-nom" role="group" aria-label="Noms courants">
+          <button type="button" class="chip" data-nom="Maison">Maison</button>
+          <button type="button" class="chip" data-nom="Travail">Travail</button>
+          <button type="button" class="chip" data-nom="Famille">Famille</button>
+        </div>
+        <input type="text" id="champ-dest-nom" placeholder="Travail" autocomplete="off"
+               spellcheck="false" maxlength="24">
+      </div>
+      <div class="champ champ-lieu">
+        <label for="champ-dest-adresse">Adresse</label>
+        <input type="search" id="champ-dest-adresse" placeholder="12 rue de la Paix, Toulouse"
+               autocomplete="off" spellcheck="false">
+        <button type="button" class="micro" id="micro-dest-adresse" hidden
+                aria-label="Dicter l&#8217;adresse">&#127908;</button>
+        <ul class="suggestions" id="suggestions-dest-adresse" hidden></ul>
+      </div>
+      <div class="fiche-actions">
+        <button type="button" class="bouton primaire" id="btn-dest-ajouter">Ajouter</button>
+        <button type="button" class="bouton" id="btn-dest-ici">Je suis ici</button>
+      </div>
+      <p class="aide" id="dest-message"></p>
+
+      <h3>Ouvrir la navigation avec</h3>
+      <div class="chips" id="chips-gps" role="group" aria-label="Application de navigation"></div>
+      <p class="aide">
+        C&#8217;est cette application qui s&#8217;ouvre au toucher d&#8217;une destination. Waze
+        est le seul &#224; tenir compte du trafic en temps r&#233;el.
+      </p>
+
+      <h3>Un toucher depuis l&#8217;&#233;cran d&#8217;accueil</h3>
+      <p class="aide" id="aide-installation"></p>
+    </div>
   </div>
 </div>
 
