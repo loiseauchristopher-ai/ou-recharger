@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Où recharger</title>
+<meta name="description" content="Recherche de bornes de recharge pour voiture électrique en France : réseau, puissance, type de prise, disponibilité.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="evitement" href="#resultats">Aller aux résultats</a>
+
+<header class="entete">
+  <div class="marque">
+    <span class="marque-icone" aria-hidden="true">⚡</span>
+    <div>
+      <h1>Où recharger</h1>
+      <p class="marque-sous">France · <span id="compteur-total">…</span></p>
+    </div>
+  </div>
+
+  <form class="recherche" id="form-recherche" role="search">
+    <label class="visuellement-cache" for="champ-lieu">Ville, adresse ou code postal</label>
+    <input id="champ-lieu" type="search" placeholder="Ville, adresse ou code postal…"
+           autocomplete="off" spellcheck="false">
+    <button type="submit" class="bouton primaire">Rechercher</button>
+    <button type="button" class="bouton" id="btn-geoloc" title="Utiliser ma position">
+      <span aria-hidden="true">◎</span><span class="texte-bouton">Ma position</span>
+    </button>
+    <ul class="suggestions" id="suggestions" hidden></ul>
+  </form>
+
+  <button type="button" class="bouton bascule-filtres" id="btn-filtres" aria-expanded="false">
+    Filtres <span class="pastille" id="pastille-filtres" hidden>0</span>
+  </button>
+</header>
+
+<main class="grille">
+  <aside class="panneau-filtres" id="panneau-filtres" aria-label="Filtres">
+    <div class="filtres-entete">
+      <h2>Filtres</h2>
+      <button type="button" class="lien" id="btn-reinit">Réinitialiser les filtres</button>
+    </div>
+
+    <section class="filtre" id="bloc-rayon" hidden>
+      <h3><label for="champ-rayon">Rayon de recherche</label></h3>
+      <div class="rayon">
+        <input type="range" id="champ-rayon" min="1" max="100" step="1" value="10">
+        <output id="valeur-rayon">10 km</output>
+      </div>
+      <p class="aide" id="autour-de"></p>
+    </section>
+
+    <section class="filtre">
+      <h3>Puissance minimale</h3>
+      <div class="chips" id="chips-puissance" role="group"></div>
+      <p class="aide">La puissance affichée est celle du point de charge le plus rapide de la station.</p>
+    </section>
+
+    <section class="filtre">
+      <h3>Disponibilité</h3>
+      <div class="chips colonne" id="chips-dispo" role="group"></div>
+      <p class="aide" id="aide-dispo"></p>
+    </section>
+
+    <section class="filtre">
+      <h3>Type de prise</h3>
+      <div class="chips" id="chips-prises" role="group"></div>
+    </section>
+
+    <section class="filtre">
+      <h3>
+        Réseau / enseigne
+        <span class="compte-selection" id="compte-reseaux"></span>
+      </h3>
+      <input type="search" id="champ-reseau" class="mini-recherche" placeholder="Filtrer les réseaux…"
+             autocomplete="off">
+      <div class="liste-reseaux" id="liste-reseaux" role="group" aria-label="Réseaux"></div>
+      <button type="button" class="lien" id="btn-reseaux-vider" hidden>Effacer la sélection</button>
+    </section>
+
+    <section class="filtre">
+      <h3>Services</h3>
+      <div class="chips colonne" id="chips-services" role="group"></div>
+    </section>
+  </aside>
+
+  <section class="zone-carte">
+    <div class="carte-conteneur">
+      <canvas id="carte" aria-label="Carte des stations de recharge" role="img"></canvas>
+      <div class="carte-outils">
+        <button type="button" class="bouton-carte" id="btn-zoom-plus" aria-label="Zoomer">+</button>
+        <button type="button" class="bouton-carte" id="btn-zoom-moins" aria-label="Dézoomer">−</button>
+        <button type="button" class="bouton-carte" id="btn-france" title="Voir toute la France">⌂</button>
+      </div>
+      <div class="legende" id="legende"></div>
+      <div class="bandeau-carte" id="bandeau-carte" hidden></div>
+    </div>
+  </section>
+
+  <section class="zone-resultats" id="resultats" aria-live="polite">
+    <div class="resultats-entete">
+      <h2 id="titre-resultats">Résultats</h2>
+      <label class="tri">
+        <span>Trier par</span>
+        <select id="champ-tri">
+          <option value="distance">Distance</option>
+          <option value="puissance">Puissance</option>
+          <option value="points">Nombre de points</option>
+          <option value="nom">Nom</option>
+        </select>
+      </label>
+    </div>
+    <ol class="liste-stations" id="liste-stations"></ol>
+    <button type="button" class="bouton pleine-largeur" id="btn-plus" hidden>Afficher plus de stations</button>
+    <p class="vide" id="message-vide" hidden></p>
+  </section>
+</main>
+
+<aside class="fiche" id="fiche" hidden aria-label="Détail de la station">
+  <button type="button" class="fermer" id="btn-fermer-fiche" aria-label="Fermer">×</button>
+  <div id="fiche-contenu"></div>
+</aside>
+
+<footer class="pied">
+  <p id="pied-source">Source : fichier consolidé des bornes de recharge (IRVE) — data.gouv.fr / Etalab, Licence Ouverte.</p>
+</footer>
+
+<div class="chargement" id="chargement"><span class="rouet" aria-hidden="true"></span> Chargement des stations…</div>
+
+<script src="donnees/fond-carte.js"></script>
+<script src="donnees/stations.js"></script>
+<script src="js/donnees.js"></script>
+<script src="js/horaires.js"></script>
+<script src="js/dispo.js"></script>
+<script src="js/carte.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

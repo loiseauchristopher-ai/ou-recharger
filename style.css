@@ -1,0 +1,468 @@
+/* Bornes de recharge — feuille de style unique.
+
+   Typographie : Archivo (grotesque technique, un peu etroite) pour l'interface,
+   IBM Plex Mono pour les chiffres — puissances, distances, compteurs — qui doivent
+   s'aligner en colonne. Palette de neutres a biais froid ; l'accent bleu sert la
+   navigation, tandis que vert/orange/rouge restent reserves au sens (libre, en
+   charge, hors service) et aux paliers de puissance.
+
+   Trois etats de theme sont geres : clair par defaut, sombre selon le systeme,
+   et choix explicite de l'utilisateur via data-theme sur la racine. */
+
+:root {
+  --police-ui: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --police-donnees: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --fond: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --texte: #16202e;
+  --texte-doux: #5a6779;
+  --trait: #d9e0ea;
+  --accent: #1f5fbf;
+  --accent-doux: #e8f0fc;
+  --ok: #1a8f6a;
+  --occupe: #d98324;
+  --hs: #c2413a;
+  --ombre: 0 1px 2px rgba(16, 32, 55, .06), 0 8px 24px rgba(16, 32, 55, .07);
+  --rayon: 10px;
+
+  --carte-fond: #dfe7ef;
+  --carte-terre: #f8fafc;
+  --carte-trait: #c2cddb;
+  --carte-selection: #16202e;
+  --carte-marqueur: #16202e;
+  --carte-rayon-fond: rgba(31, 95, 191, .07);
+  --carte-rayon-trait: rgba(31, 95, 191, .55);
+  --carte-police: "Archivo", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Systeme en sombre — sauf si l'utilisateur a explicitement demande le clair. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fond: #10151d;
+    --surface: #171e28;
+    --surface-2: #1f2733;
+    --texte: #e8edf4;
+    --texte-doux: #9aa7b8;
+    --trait: #2b3543;
+    --accent: #6aa6ff;
+    --accent-doux: #1d2b40;
+    --ok: #3fc498;
+    --occupe: #e8a94f;
+    --hs: #e8756c;
+    --ombre: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .35);
+    --carte-fond: #0d1219;
+    --carte-terre: #1a222d;
+    --carte-trait: #33404f;
+    --carte-selection: #ffffff;
+    --carte-marqueur: #ffffff;
+    --carte-rayon-fond: rgba(106, 166, 255, .10);
+    --carte-rayon-trait: rgba(106, 166, 255, .6);
+  }
+}
+
+/* Choix explicite de l'utilisateur : il l'emporte sur le reglage systeme. */
+:root[data-theme="dark"] {
+  --fond: #10151d;
+  --surface: #171e28;
+  --surface-2: #1f2733;
+  --texte: #e8edf4;
+  --texte-doux: #9aa7b8;
+  --trait: #2b3543;
+  --accent: #6aa6ff;
+  --accent-doux: #1d2b40;
+  --ok: #3fc498;
+  --occupe: #e8a94f;
+  --hs: #e8756c;
+  --ombre: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .35);
+  --carte-fond: #0d1219;
+  --carte-terre: #1a222d;
+  --carte-trait: #33404f;
+  --carte-selection: #ffffff;
+  --carte-marqueur: #ffffff;
+  --carte-rayon-fond: rgba(106, 166, 255, .10);
+  --carte-rayon-trait: rgba(106, 166, 255, .6);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 15px/1.5 var(--police-ui);
+  color: var(--texte);
+  background: var(--fond);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+h1, h2, h3 { margin: 0; line-height: 1.25; }
+h1 { font-size: 17px; letter-spacing: -.01em; text-wrap: balance; }
+h2 { font-size: 15px; }
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--texte-doux); font-weight: 600; }
+
+.visuellement-cache {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+.evitement {
+  position: absolute; left: -9999px; top: 0; z-index: 100;
+  background: var(--accent); color: #fff; padding: 10px 16px;
+}
+.evitement:focus { left: 8px; top: 8px; }
+
+/* ------------------------------------------------------------------ Entete */
+
+.entete {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--trait);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  flex-wrap: wrap;
+}
+
+.marque { display: flex; align-items: center; gap: 10px; }
+.marque-icone {
+  font-size: 20px; width: 34px; height: 34px; display: grid; place-items: center;
+  background: var(--accent-doux); border-radius: 9px;
+}
+.marque-sous {
+  margin: 1px 0 0; font-size: 12px; color: var(--texte-doux);
+  font-family: var(--police-donnees); font-variant-numeric: tabular-nums;
+}
+
+.recherche { position: relative; display: flex; gap: 8px; flex: 1 1 380px; min-width: 260px; }
+.recherche input[type="search"] {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon);
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+}
+.recherche input:focus-visible, select:focus-visible, .mini-recherche:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+
+.suggestions {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  margin: 0; padding: 4px; list-style: none; z-index: 40;
+  background: var(--surface); border: 1px solid var(--trait);
+  border-radius: var(--rayon); box-shadow: var(--ombre); max-height: 300px; overflow: auto;
+}
+.suggestions li { padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 14px; }
+.suggestions li:hover, .suggestions li[aria-selected="true"] { background: var(--accent-doux); }
+.suggestions .sug-detail { color: var(--texte-doux); font-size: 12px; }
+
+/* ----------------------------------------------------------------- Boutons */
+
+.bouton {
+  padding: 9px 13px;
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.bouton:hover { background: var(--surface-2); }
+.bouton:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.bouton.primaire { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bouton.primaire:hover { filter: brightness(1.07); }
+.bouton.pleine-largeur { width: 100%; justify-content: center; margin-top: 10px; }
+
+.lien {
+  background: none; border: 0; padding: 0; color: var(--accent);
+  font: inherit; font-size: 13px; cursor: pointer; text-decoration: underline;
+}
+
+.pastille {
+  background: var(--accent); color: #fff; border-radius: 999px;
+  font-size: 11px; padding: 1px 6px; font-weight: 600;
+}
+
+.bascule-filtres { display: none; }
+
+/* ------------------------------------------------------------------ Grille */
+
+.grille {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 380px;
+  grid-template-areas: "filtres carte resultats";
+  gap: 0;
+  min-height: 0;
+}
+
+.panneau-filtres {
+  grid-area: filtres;
+  background: var(--surface);
+  border-right: 1px solid var(--trait);
+  padding: 14px;
+  overflow-y: auto;
+  max-height: calc(100dvh - 56px);
+}
+
+.filtres-entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+
+.filtre { padding: 12px 0; border-top: 1px solid var(--trait); }
+.filtre:first-of-type { border-top: 0; padding-top: 0; }
+.filtre h3 { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.compte-selection { font-size: 11px; color: var(--accent); text-transform: none; letter-spacing: 0; }
+.aide { margin: 8px 0 0; font-size: 12px; color: var(--texte-doux); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips.colonne { flex-direction: column; }
+
+.chip {
+  border: 1px solid var(--trait);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 6px 11px;
+  font-size: 13px;
+  cursor: pointer;
+  color: inherit;
+  display: inline-flex; align-items: center; gap: 6px;
+  text-align: left;
+}
+.chips.colonne .chip { border-radius: 8px; width: 100%; }
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500;
+}
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chip .puce { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.chip .chip-detail { font-size: 11px; opacity: .75; }
+
+.rayon { display: flex; align-items: center; gap: 10px; }
+.rayon input { flex: 1; accent-color: var(--accent); }
+.rayon output {
+  font-family: var(--police-donnees); font-variant-numeric: tabular-nums;
+  font-size: 13px; min-width: 58px; text-align: right;
+}
+
+.mini-recherche {
+  width: 100%; padding: 7px 10px; margin-bottom: 8px;
+  border: 1px solid var(--trait); border-radius: 8px;
+  background: var(--surface-2); color: inherit; font: inherit; font-size: 13px;
+}
+
+.liste-reseaux { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.ligne-reseau {
+  display: flex; align-items: center; gap: 8px; padding: 5px 6px;
+  border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.ligne-reseau:hover { background: var(--surface-2); }
+.ligne-reseau input { accent-color: var(--accent); flex: none; }
+.ligne-reseau .nom { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ligne-reseau .n {
+  color: var(--texte-doux); font-size: 11px;
+  font-family: var(--police-donnees); font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------- Carte */
+
+.zone-carte { grid-area: carte; position: relative; min-height: 320px; }
+.carte-conteneur { position: absolute; inset: 0; }
+#carte { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+#carte.saisi { cursor: grabbing; }
+
+.carte-outils { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 5px; }
+.bouton-carte {
+  width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--trait);
+  background: var(--surface); color: inherit; font-size: 17px; cursor: pointer;
+  box-shadow: var(--ombre); display: grid; place-items: center;
+}
+.bouton-carte:hover { background: var(--surface-2); }
+
+.legende {
+  position: absolute; left: 12px; bottom: 12px;
+  background: var(--surface); border: 1px solid var(--trait); border-radius: var(--rayon);
+  padding: 8px 10px; font-size: 12px; box-shadow: var(--ombre); max-width: 210px;
+}
+.legende-titre { font-weight: 600; margin-bottom: 5px; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); }
+.legende-ligne { display: flex; align-items: center; gap: 7px; padding: 1px 0; }
+.legende-ligne .puce { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.legende-bascule { display: none; }
+
+.bandeau-carte {
+  position: absolute; left: 12px; top: 12px; right: 60px;
+  background: var(--surface); border: 1px solid var(--trait); border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 8px 11px; font-size: 12.5px; box-shadow: var(--ombre);
+  max-height: 60%; overflow-y: auto;
+}
+.bandeau-carte { padding-right: 30px; }
+.bandeau-action { margin-top: 8px; padding: 6px 11px; font-size: 12.5px; }
+.bandeau-fermer {
+  position: absolute; top: 4px; right: 5px; width: 24px; height: 24px;
+  border: 0; border-radius: 6px; background: none; color: var(--texte-doux);
+  font-size: 17px; line-height: 1; cursor: pointer;
+}
+.bandeau-fermer:hover { background: var(--surface-2); color: var(--texte); }
+
+/* --------------------------------------------------------------- Resultats */
+
+.zone-resultats {
+  grid-area: resultats;
+  background: var(--surface);
+  border-left: 1px solid var(--trait);
+  padding: 14px;
+  overflow-y: auto;
+  max-height: calc(100dvh - 56px);
+}
+.resultats-entete {
+  display: flex; flex-wrap: wrap; justify-content: space-between;
+  align-items: baseline; gap: 6px 12px; margin-bottom: 10px;
+}
+.resultats-entete h2 {
+  font-family: var(--police-donnees); font-variant-numeric: tabular-nums;
+  font-size: 14px; font-weight: 600; flex: 1 1 100%;
+}
+.tri { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texte-doux); }
+.tri select { flex: 1; min-width: 0; }
+.tri select {
+  border: 1px solid var(--trait); border-radius: 7px; padding: 4px 6px;
+  background: var(--surface-2); color: inherit; font: inherit; font-size: 12px;
+}
+
+.liste-stations { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.station {
+  border: 1px solid var(--trait); border-radius: var(--rayon);
+  padding: 10px 12px; cursor: pointer; background: var(--surface);
+}
+.station:hover { border-color: var(--accent); }
+.station.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-doux); }
+.station-haut { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.station-nom { font-weight: 600; font-size: 14px; }
+.station-distance {
+  font-size: 12px; color: var(--texte-doux); white-space: nowrap;
+  font-family: var(--police-donnees); font-variant-numeric: tabular-nums;
+}
+.station-reseau { font-size: 12.5px; color: var(--accent); margin-top: 1px; }
+.station-adresse { font-size: 12.5px; color: var(--texte-doux); margin-top: 2px; }
+.station-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+
+.badge {
+  font-size: 11px; padding: 2px 7px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--trait); color: var(--texte-doux);
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.badge.nombre {
+  font-family: var(--police-donnees); font-variant-numeric: tabular-nums;
+  font-weight: 500; color: var(--texte);
+}
+/* Un statut mesure se distingue d'un statut deduit des horaires. */
+.badge.direct { font-weight: 600; }
+
+.badge.puissance {
+  font-weight: 600; color: #fff; border: 0;
+  font-family: var(--police-donnees); font-variant-numeric: tabular-nums;
+}
+.badge.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); border-color: transparent; }
+.badge.occupe { background: color-mix(in srgb, var(--occupe) 18%, transparent); color: var(--occupe); border-color: transparent; }
+.badge.hs { background: color-mix(in srgb, var(--hs) 16%, transparent); color: var(--hs); border-color: transparent; }
+
+.vide { text-align: center; color: var(--texte-doux); padding: 30px 10px; font-size: 14px; }
+
+/* ------------------------------------------------------------------- Fiche */
+
+.fiche {
+  position: fixed; right: 16px; bottom: 16px; width: min(420px, calc(100vw - 32px));
+  max-height: min(72dvh, 640px); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--trait); border-radius: 14px;
+  box-shadow: var(--ombre); padding: 18px; z-index: 50;
+}
+.fermer {
+  position: absolute; top: 10px; right: 10px; width: 30px; height: 30px;
+  border-radius: 8px; border: 1px solid var(--trait); background: var(--surface);
+  font-size: 19px; line-height: 1; cursor: pointer; color: inherit;
+}
+.fiche h2 { font-size: 17px; padding-right: 34px; }
+.fiche .fiche-reseau { color: var(--accent); font-size: 13px; margin: 2px 0 10px; }
+.fiche dl { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; margin: 12px 0 0; font-size: 13.5px; }
+.fiche dt { color: var(--texte-doux); }
+.fiche dd { margin: 0; }
+.fiche-titre-actions {
+  margin: 16px 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--texte-doux);
+}
+.fiche-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.fiche-message {
+  margin-top: 10px; padding: 10px 12px; border-radius: var(--rayon);
+  background: var(--accent-doux); border-left: 3px solid var(--accent);
+  font-size: 12.5px;
+}
+.fiche-message p { margin: 0 0 8px; }
+.fiche-coords { display: flex; gap: 8px; margin-top: 8px; }
+.fiche-coords input {
+  flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid var(--trait);
+  border-radius: var(--rayon); background: var(--surface-2); color: inherit;
+  font-family: var(--police-donnees); font-size: 13px;
+}
+.fiche-note { font-size: 12px; color: var(--texte-doux); margin-top: 12px;
+  border-top: 1px solid var(--trait); padding-top: 10px; }
+
+/* -------------------------------------------------------------- Chargement */
+
+.chargement {
+  position: fixed; inset: 0; display: grid; place-content: center; gap: 12px;
+  justify-items: center; background: var(--fond); z-index: 90; color: var(--texte-doux);
+}
+.chargement[hidden] { display: none; }
+.rouet {
+  width: 28px; height: 28px; border: 3px solid var(--trait);
+  border-top-color: var(--accent); border-radius: 50%; animation: tourne .8s linear infinite;
+}
+@keyframes tourne { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .rouet { animation-duration: 2.4s; } }
+
+.pied { padding: 9px 16px; font-size: 11.5px; color: var(--texte-doux);
+  background: var(--surface); border-top: 1px solid var(--trait); }
+.pied p { margin: 0; }
+
+/* ------------------------------------------------------------- Adaptations */
+
+@media (max-width: 1100px) {
+  .grille { grid-template-columns: 280px minmax(0, 1fr); grid-template-areas: "filtres carte" "filtres resultats"; }
+  .zone-carte { min-height: 46dvh; }
+  .zone-resultats { border-left: 0; border-top: 1px solid var(--trait); max-height: none; }
+}
+
+@media (max-width: 780px) {
+  .legende { max-width: 152px; padding: 6px 8px; font-size: 11px; }
+  .legende .legende-ligne:not(:first-child) { display: none; }
+  .legende:hover .legende-ligne, .legende:focus-within .legende-ligne { display: flex; }
+  .legende.deployee .legende-ligne { display: flex; }
+  .legende-bascule {
+    display: block;
+    background: none; border: 0; padding: 4px 0 0; margin: 0; color: var(--accent);
+    font: inherit; font-size: 11px; cursor: pointer; text-decoration: underline;
+  }
+  .entete { gap: 10px; padding: 9px 12px; }
+  .bascule-filtres { display: inline-flex; }
+  .texte-bouton { display: none; }
+  .grille { grid-template-columns: minmax(0, 1fr); grid-template-areas: "carte" "resultats"; }
+  .panneau-filtres {
+    position: fixed; inset: 0 auto 0 0; width: min(320px, 88vw); z-index: 60;
+    transform: translateX(-100%); transition: transform .2s ease; max-height: 100dvh;
+    box-shadow: var(--ombre);
+  }
+  .panneau-filtres.ouvert { transform: none; }
+  .zone-carte { min-height: 42dvh; }
+  .fiche { right: 0; left: 0; bottom: 0; width: auto; border-radius: 14px 14px 0 0; max-height: 78dvh; }
+}
+@media (prefers-reduced-motion: reduce) { .panneau-filtres { transition: none; } }
